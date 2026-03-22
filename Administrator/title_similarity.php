@@ -443,8 +443,60 @@ $extraScripts = str_replace(
     var shouldOpenDrawer = __OPEN_DRAWER__;
     var swalAlerts = __SWAL_ALERTS__;
     var baseUrl = '__BASE_URL__';
+    var scrollStorageKey = 'titleSimilarityScrollTop:' + window.location.pathname;
     var reviewDrawerElement = document.getElementById('titleSimilarityReviewDrawer');
     var recomputeForms = Array.prototype.slice.call(document.querySelectorAll('.title-similarity-recompute-form'));
+    var reviewForms = Array.prototype.slice.call(document.querySelectorAll('.title-similarity-review-form'));
+    var reviewLinks = Array.prototype.slice.call(document.querySelectorAll('.title-similarity-review-link'));
+
+    function persistScrollPosition() {
+      try {
+        window.sessionStorage.setItem(scrollStorageKey, String(Math.max(window.pageYOffset || 0, 0)));
+      } catch (error) {
+        // Ignore storage access issues and continue with the submit.
+      }
+    }
+
+    function restoreScrollPosition() {
+      var storedScrollTop = null;
+
+      try {
+        storedScrollTop = window.sessionStorage.getItem(scrollStorageKey);
+      } catch (error) {
+        storedScrollTop = null;
+      }
+
+      if (storedScrollTop === null) {
+        return;
+      }
+
+      try {
+        window.sessionStorage.removeItem(scrollStorageKey);
+      } catch (error) {
+        // Ignore storage cleanup issues.
+      }
+
+      var parsedScrollTop = parseInt(storedScrollTop, 10);
+
+      if (isNaN(parsedScrollTop) || parsedScrollTop < 1) {
+        return;
+      }
+
+      var applyScrollPosition = function () {
+        window.scrollTo(0, parsedScrollTop);
+      };
+
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(function () {
+          applyScrollPosition();
+          window.requestAnimationFrame(applyScrollPosition);
+        });
+
+        return;
+      }
+
+      applyScrollPosition();
+    }
 
     function showSwalAlerts(index) {
       if (typeof Swal === 'undefined' || !Array.isArray(swalAlerts) || index >= swalAlerts.length) {
@@ -499,6 +551,24 @@ $extraScripts = str_replace(
         });
       });
     });
+
+    reviewLinks.forEach(function (link) {
+      link.addEventListener('click', function (event) {
+        if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+          return;
+        }
+
+        persistScrollPosition();
+      });
+    });
+
+    reviewForms.forEach(function (form) {
+      form.addEventListener('submit', function () {
+        persistScrollPosition();
+      });
+    });
+
+    restoreScrollPosition();
 
     if (reviewDrawerElement && typeof bootstrap !== 'undefined' && bootstrap.Offcanvas) {
       var reviewDrawer = bootstrap.Offcanvas.getOrCreateInstance(reviewDrawerElement);
@@ -854,7 +924,7 @@ ob_start();
                     </div>
                   </td>
                   <td class="title-similarity-actions-cell">
-                    <a class="title-similarity-btn secondary" href="<?= e($pairUrl); ?>">Review Pair</a>
+                    <a class="title-similarity-btn secondary title-similarity-review-link" href="<?= e($pairUrl); ?>">Review Pair</a>
                   </td>
                 </tr>
                 <?php $rowNumber++; ?>
