@@ -16,6 +16,7 @@ final class AdminPage
         $extraStyles = isset($options['extra_styles']) ? trim((string) $options['extra_styles']) : '';
 
         $viewer = self::viewerIdentity();
+        $pageContext = self::pageContext($currentPage, $title);
         $brandUrl = app_link('administrator/');
         $logoutAction = app_link('logout.php');
 
@@ -37,7 +38,7 @@ final class AdminPage
     />
     <title><?= e($title); ?></title>
     <meta name="description" content="Sneat-based Oracle administration" />
-    <link rel="icon" type="image/x-icon" href="<?= e(app_link('assets/img/favicon/favicon.ico')); ?>" />
+    <link rel="icon" type="image/x-icon" href="<?= e(app_link('assets/img/favicon/favicon.png')); ?>" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -485,14 +486,35 @@ final class AdminPage
       }
 
       .main-title-wrapper {
+        position: relative;
         margin-bottom: 1.5rem;
+        padding: 1.15rem 1.25rem 1.15rem 1.45rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 1rem;
+        background:
+          radial-gradient(circle at top right, rgba(105, 108, 255, 0.12), transparent 28%),
+          linear-gradient(135deg, #ffffff 0%, #f9fbff 100%);
+        box-shadow: 0 0.2rem 1rem rgba(67, 89, 113, 0.08);
+        overflow: hidden;
+      }
+
+      .main-title-wrapper::before {
+        content: "";
+        position: absolute;
+        left: 1rem;
+        top: 50%;
+        width: 0.3rem;
+        height: calc(100% - 1.35rem);
+        border-radius: 999px;
+        transform: translateY(-50%);
+        background: linear-gradient(180deg, #696cff 0%, #8b92ff 100%);
       }
 
       .main-title {
         margin: 0;
-        font-size: 1.5rem;
+        font-size: 1.45rem;
         font-weight: 700;
-        color: #566a7f;
+        color: #273144;
       }
 
       .white-block {
@@ -740,8 +762,12 @@ final class AdminPage
         top: 0;
         z-index: 1030;
         margin: 0 !important;
-        width: auto;
-        max-width: none;
+        width: 100% !important;
+        max-width: none !important;
+        display: flex;
+        align-items: center;
+        flex-wrap: nowrap;
+        justify-content: space-between;
         border-radius: 0;
         border-bottom: 1px solid #e5e7eb;
         box-shadow: none !important;
@@ -752,12 +778,92 @@ final class AdminPage
       }
 
       .layout-navbar .navbar-nav-right {
-        width: 100%;
+        width: auto;
         min-height: 48px;
+        flex: 0 0 auto;
+        margin-left: auto !important;
+        display: flex;
+        justify-content: flex-end;
       }
 
       .layout-navbar .navbar-nav {
         gap: 0.35rem;
+      }
+
+      .layout-navbar .navbar-nav-right .navbar-nav {
+        margin-left: auto;
+        justify-content: flex-end;
+      }
+
+      .navbar-page-context {
+        min-width: 0;
+        flex: 1 1 auto;
+        display: flex;
+        align-items: center;
+        gap: 0.9rem;
+      }
+
+      .navbar-page-icon {
+        width: 2.5rem;
+        height: 2.5rem;
+        flex: 0 0 2.5rem;
+        border-radius: 0.85rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(105, 108, 255, 0.14);
+        background: rgba(105, 108, 255, 0.12);
+        color: #696cff;
+      }
+
+      .navbar-page-icon i {
+        font-size: 1.15rem;
+      }
+
+      .navbar-page-copy {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+
+      .navbar-page-title {
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: 700;
+        line-height: 1.2;
+        color: #111827;
+      }
+
+      .navbar-user-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.2rem 0;
+      }
+
+      .navbar-user-copy {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        min-width: 0;
+      }
+
+      .navbar-user-name {
+        display: block;
+        color: #111827;
+        font-size: 0.88rem;
+        font-weight: 600;
+        line-height: 1.2;
+        text-align: right;
+      }
+
+      .navbar-user-email {
+        display: block;
+        color: #6b7280;
+        font-size: 0.74rem;
+        line-height: 1.2;
+        text-align: right;
       }
 
       .layout-navbar .layout-menu-toggle .nav-link {
@@ -826,8 +932,12 @@ final class AdminPage
 
       .app-page-header {
         margin-bottom: 1.25rem;
-        padding-bottom: 1rem;
-        border-bottom: 1px solid #e5e7eb;
+        padding: 1.1rem 1.2rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 1rem;
+        background:
+          radial-gradient(circle at top right, rgba(105, 108, 255, 0.1), transparent 24%),
+          linear-gradient(135deg, #ffffff 0%, #f9fbff 100%);
       }
 
       .app-page-header h4 {
@@ -944,6 +1054,7 @@ final class AdminPage
           padding-left: 1rem;
           padding-right: 1rem;
         }
+
       }
 
       @media (max-width: 767.98px) {
@@ -956,8 +1067,51 @@ final class AdminPage
           padding-right: 1rem;
         }
 
+        .navbar-page-context {
+          gap: 0.7rem;
+        }
+
+        .navbar-page-icon {
+          width: 2.2rem;
+          height: 2.2rem;
+          flex-basis: 2.2rem;
+          border-radius: 0.8rem;
+        }
+
+        .navbar-page-title {
+          font-size: 0.95rem;
+        }
+
+        .navbar-user-name {
+          font-size: 0.82rem;
+        }
+
+        .navbar-user-email {
+          font-size: 0.7rem;
+        }
+
         .app-page-header {
-          padding-bottom: 0.85rem;
+          gap: 0.75rem;
+          padding: 1rem;
+        }
+
+        .main-title {
+          font-size: 1.25rem;
+        }
+      }
+
+      @media (max-width: 575.98px) {
+        .navbar-user-copy {
+          display: none;
+        }
+
+        .main-title-wrapper {
+          padding: 1rem 1rem 1rem 1.25rem;
+        }
+
+        .main-title-wrapper::before {
+          left: 0.8rem;
+          height: calc(100% - 1.15rem);
         }
       }
 
@@ -1030,7 +1184,7 @@ final class AdminPage
 
         <div class="layout-page">
           <nav
-            class="layout-navbar container-xxl navbar navbar-expand-xl navbar-detached align-items-center bg-navbar-theme"
+            class="layout-navbar navbar navbar-expand-xl navbar-detached align-items-center bg-navbar-theme"
             id="layout-navbar"
           >
             <div class="layout-menu-toggle navbar-nav align-items-xl-center me-3 me-xl-0 d-xl-none">
@@ -1039,10 +1193,23 @@ final class AdminPage
               </a>
             </div>
 
+            <div class="navbar-page-context">
+              <span class="navbar-page-icon" aria-hidden="true">
+                <i class="bx <?= e($pageContext['icon']); ?>"></i>
+              </span>
+              <div class="navbar-page-copy">
+                <h1 class="navbar-page-title"><?= e($pageContext['title']); ?></h1>
+              </div>
+            </div>
+
             <div class="navbar-nav-right d-flex align-items-center justify-content-end" id="navbar-collapse">
               <ul class="navbar-nav flex-row align-items-center ms-auto">
                 <li class="nav-item navbar-dropdown dropdown-user dropdown">
-                  <a class="nav-link dropdown-toggle hide-arrow" href="javascript:void(0);" data-bs-toggle="dropdown">
+                  <a class="nav-link dropdown-toggle hide-arrow navbar-user-link" href="javascript:void(0);" data-bs-toggle="dropdown">
+                    <span class="navbar-user-copy">
+                      <span class="navbar-user-name text-truncate"><?= e($viewer['name']); ?></span>
+                      <span class="navbar-user-email text-truncate"><?= e($viewer['email']); ?></span>
+                    </span>
                     <div class="avatar avatar-online">
 <?php if ($viewer['avatar_url'] !== ''): ?>
                       <img src="<?= e($viewer['avatar_url']); ?>" alt="<?= e($viewer['name']); ?>" class="w-px-40 h-auto rounded-circle" />
@@ -1130,9 +1297,13 @@ final class AdminPage
     {
         $dashboard = self::menuItemClass($currentPage === 'dashboard');
         $accounts = self::menuItemClass($currentPage === 'accounts');
-        $researchOpen = in_array($currentPage, ['research_type', 'manuscripts'], true);
+        $researchOpen = in_array($currentPage, ['campus', 'college', 'course', 'research_type', 'title_similarity', 'manuscripts'], true);
         $researchGroup = self::menuItemClass($researchOpen, true);
+        $campus = self::menuItemClass($currentPage === 'campus');
+        $college = self::menuItemClass($currentPage === 'college');
+        $course = self::menuItemClass($currentPage === 'course');
         $researchType = self::menuItemClass($currentPage === 'research_type');
+        $titleSimilarity = self::menuItemClass($currentPage === 'title_similarity');
         $manuscripts = self::menuItemClass($currentPage === 'manuscripts');
 
         return '
@@ -1155,9 +1326,29 @@ final class AdminPage
                 ' . self::menuCardContent('bx-book-content', 'Manage Research', 'Open the research setup and manuscript management tools.') . '
               </a>
               <ul class="menu-sub">
+                <li class="' . $campus . '">
+                  <a href="' . e(app_link('administrator/campus.php')) . '" class="menu-link">
+                    ' . self::menuCardContent('bx-map-pin', 'Campus', 'Maintain the campus list used by colleges, accounts, and research records.', true) . '
+                  </a>
+                </li>
+                <li class="' . $college . '">
+                  <a href="' . e(app_link('administrator/college.php')) . '" class="menu-link">
+                    ' . self::menuCardContent('bx-briefcase-alt-2', 'College', 'Assign colleges to campuses so course records stay organized.', true) . '
+                  </a>
+                </li>
+                <li class="' . $course . '">
+                  <a href="' . e(app_link('administrator/course.php')) . '" class="menu-link">
+                    ' . self::menuCardContent('bx-book', 'Course', 'Manage program codes, descriptions, majors, and college assignments.', true) . '
+                  </a>
+                </li>
                 <li class="' . $researchType . '">
                   <a href="' . e(app_link('administrator/research_type.php')) . '" class="menu-link">
                     ' . self::menuCardContent('bx-category-alt', 'Research Type', 'Maintain the categories available to manuscript records.', true) . '
+                  </a>
+                </li>
+                <li class="' . $titleSimilarity . '">
+                  <a href="' . e(app_link('administrator/title_similarity.php')) . '" class="menu-link">
+                    ' . self::menuCardContent('bx-git-compare', 'Title Similarity', 'Review related title pairs, collect labels, and compare algorithm performance.', true) . '
                   </a>
                 </li>
                 <li class="' . $manuscripts . '">
@@ -1214,6 +1405,73 @@ final class AdminPage
             'email' => $email !== '' ? $email : 'Authorized account',
             'avatar_url' => $avatarUrl,
             'initial' => self::initial($name !== '' ? $name : 'A'),
+        ];
+    }
+
+    private static function pageContext(string $currentPage, string $title): array
+    {
+        $contexts = [
+            'dashboard' => [
+                'title' => 'Dashboard',
+                'section' => 'Overview',
+                'note' => 'Track account activity, research volume, and the latest manuscript movement.',
+                'icon' => 'bx-home-circle',
+            ],
+            'accounts' => [
+                'title' => 'Accounts Management',
+                'section' => 'Administration',
+                'note' => 'Manage approved users, access availability, and account readiness in one place.',
+                'icon' => 'bx-user',
+            ],
+            'campus' => [
+                'title' => 'Campus Management',
+                'section' => 'Research Workspace',
+                'note' => 'Maintain the campus records used across colleges, courses, accounts, and manuscript records.',
+                'icon' => 'bx-map-pin',
+            ],
+            'college' => [
+                'title' => 'College Management',
+                'section' => 'Research Workspace',
+                'note' => 'Manage college records and keep each one tied to the correct campus.',
+                'icon' => 'bx-briefcase-alt-2',
+            ],
+            'course' => [
+                'title' => 'Course Management',
+                'section' => 'Research Workspace',
+                'note' => 'Maintain program codes, descriptions, majors, and their college assignments.',
+                'icon' => 'bx-book',
+            ],
+            'research_type' => [
+                'title' => 'Research Type Management',
+                'section' => 'Research Workspace',
+                'note' => 'Maintain the research categories used when encoding and organizing manuscript records.',
+                'icon' => 'bx-category-alt',
+            ],
+            'title_similarity' => [
+                'title' => 'Title Similarity Workspace',
+                'section' => 'Research Workspace',
+                'note' => 'Review related title pairs, collect expert labels, and compare algorithm performance before deployment.',
+                'icon' => 'bx-git-compare',
+            ],
+            'manuscripts' => [
+                'title' => 'Research Management',
+                'section' => 'Research Workspace',
+                'note' => 'Handle research records, committee assignments, abstracts, and follow-up details.',
+                'icon' => 'bx-book-open',
+            ],
+        ];
+
+        if (isset($contexts[$currentPage])) {
+            return $contexts[$currentPage];
+        }
+
+        $normalizedTitle = trim((string) preg_replace('/\s*\|\s*Oracle.*$/i', '', $title));
+
+        return [
+            'title' => $normalizedTitle !== '' ? $normalizedTitle : 'Administrator Workspace',
+            'section' => 'Administration',
+            'note' => 'Manage Oracle administrative tasks from a consistent shared workspace.',
+            'icon' => 'bx-grid-alt',
         ];
     }
 

@@ -191,8 +191,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect(administrator_research_type_url(administrator_research_type_navigation_params(
                 $search,
                 $statusFilter,
-                $page,
-                $researchTypeId
+                $page
             )));
         }
 
@@ -224,8 +223,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect(administrator_research_type_url(administrator_research_type_navigation_params(
                 $search,
                 $statusFilter,
-                $page,
-                $editResearchTypeId > 0 ? $editResearchTypeId : null
+                $page
+            )));
+        }
+
+        if ($postedAction === 'delete_research_type') {
+            $researchTypeId = isset($_POST['researchtypeid']) ? (int) $_POST['researchtypeid'] : 0;
+
+            if ($researchTypeId < 1) {
+                throw new RuntimeException('The selected research type is invalid.');
+            }
+
+            $currentStatement = $pdo->prepare(
+                'SELECT researchtypeid, research_type
+                 FROM tblresearchtype
+                 WHERE researchtypeid = :researchtypeid
+                 LIMIT 1'
+            );
+            $currentStatement->bindValue(':researchtypeid', $researchTypeId, PDO::PARAM_INT);
+            $currentStatement->execute();
+            $currentResearchType = $currentStatement->fetch();
+
+            if (!is_array($currentResearchType)) {
+                throw new RuntimeException('The selected research type was not found.');
+            }
+
+            $usageStatement = $pdo->prepare(
+                'SELECT COUNT(*)
+                 FROM tblresearches
+                 WHERE typeid = :researchtypeid'
+            );
+            $usageStatement->bindValue(':researchtypeid', $researchTypeId, PDO::PARAM_INT);
+            $usageStatement->execute();
+            $usageCount = (int) $usageStatement->fetchColumn();
+
+            if ($usageCount > 0) {
+                throw new RuntimeException(
+                    'This research type cannot be deleted because it is assigned to '
+                    . number_format($usageCount)
+                    . ' research record'
+                    . ($usageCount === 1 ? '' : 's')
+                    . '.'
+                );
+            }
+
+            $deleteStatement = $pdo->prepare(
+                'DELETE FROM tblresearchtype
+                 WHERE researchtypeid = :researchtypeid
+                 LIMIT 1'
+            );
+            $deleteStatement->bindValue(':researchtypeid', $researchTypeId, PDO::PARAM_INT);
+            $deleteStatement->execute();
+
+            if ($deleteStatement->rowCount() < 1) {
+                throw new RuntimeException('The selected research type could not be deleted.');
+            }
+
+            set_flash('research_type_success', 'Research type deleted.');
+            redirect(administrator_research_type_url(administrator_research_type_navigation_params(
+                $search,
+                $statusFilter,
+                $page
             )));
         }
 
@@ -248,8 +306,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect(administrator_research_type_url(administrator_research_type_navigation_params(
                 $search,
                 $statusFilter,
-                $page,
-                $editResearchTypeId > 0 ? $editResearchTypeId : null
+                $page
             )));
         }
     }
@@ -332,11 +389,9 @@ $selectedResearchTypeId = is_array($selectedResearchType) && isset($selectedRese
     ? (int) $selectedResearchType['researchtypeid']
     : 0;
 $isEditing = $selectedResearchTypeId > 0;
-$selectedResearchTypeActive = is_array($selectedResearchType)
-    ? administrator_research_type_is_active($selectedResearchType)
-    : true;
-$editorModalTitle = $isEditing ? 'Edit Research Type' : 'Add Research Type';
-$shouldOpenEditorModal = $formError !== null || $isEditing;
+$drawerTitle = 'Add Research Type';
+$drawerSubmitLabel = $isEditing ? 'Save Research Type' : 'Create Type';
+$shouldOpenEditorDrawer = $formError !== null || $isEditing;
 
 $summaryItems = [
     [
@@ -371,12 +426,77 @@ $summaryItems = [
 
 $persistedFilters = administrator_research_type_navigation_params($search, $statusFilter);
 $pageFiltersWithoutEditor = administrator_research_type_navigation_params($search, $statusFilter, $page);
-$pageFiltersWithEditor = administrator_research_type_navigation_params(
-    $search,
-    $statusFilter,
-    $page,
-    $selectedResearchTypeId > 0 ? $selectedResearchTypeId : null
+$pageActionUrl = administrator_research_type_url($pageFiltersWithoutEditor);
+
+$researchTypeDrawerDefaults = [
+    'researchtypeid' => 0,
+    'research_type' => '',
+];
+
+$researchTypeRecords = [];
+
+foreach ($researchTypes as $record) {
+    $researchTypeRecords[] = [
+        'researchtypeid' => isset($record['researchtypeid']) ? (int) $record['researchtypeid'] : 0,
+        'research_type' => (string) ($record['research_type'] ?? ''),
+    ];
+}
+
+$researchTypeRecordsJson = json_encode(
+    $researchTypeRecords,
+    JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE
 );
+
+if (!is_string($researchTypeRecordsJson)) {
+    $researchTypeRecordsJson = '[]';
+}
+
+$researchTypeDrawerDefaultsJson = json_encode(
+    $researchTypeDrawerDefaults,
+    JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE
+);
+
+if (!is_string($researchTypeDrawerDefaultsJson)) {
+    $researchTypeDrawerDefaultsJson = '{}';
+}
+
+$swalAlerts = [];
+
+if ($actionSuccess !== null) {
+    $swalAlerts[] = [
+        'icon' => 'success',
+        'title' => 'Done',
+        'text' => $actionSuccess,
+        'toast' => true,
+    ];
+}
+
+if ($actionError !== null) {
+    $swalAlerts[] = [
+        'icon' => 'error',
+        'title' => 'Something went wrong',
+        'text' => $actionError,
+        'toast' => false,
+    ];
+}
+
+if ($formError !== null) {
+    $swalAlerts[] = [
+        'icon' => 'error',
+        'title' => 'Unable to save research type',
+        'text' => $formError,
+        'toast' => false,
+    ];
+}
+
+$swalAlertsJson = json_encode(
+    $swalAlerts,
+    JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE
+);
+
+if (!is_string($swalAlertsJson)) {
+    $swalAlertsJson = '[]';
+}
 
 $extraStyles = '
 .research-types-alert {
@@ -439,18 +559,29 @@ $extraStyles = '
   flex-wrap: wrap;
 }
 
-.research-types-modal-dialog {
-  max-width: min(1120px, calc(100vw - 2rem));
-  margin: 1rem auto;
-}
-
-.research-types-modal-content {
+.research-types-drawer {
+  width: min(680px, 100vw);
   border: 0;
-  border-radius: 18px;
-  overflow: hidden;
 }
 
-.research-types-modal-header {
+.offcanvas {
+  transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.offcanvas-backdrop {
+  backdrop-filter: blur(4px);
+  transition: opacity 0.24s ease;
+  will-change: opacity;
+}
+
+.research-types-drawer.show:not(.hiding) {
+  box-shadow: -20px 0 48px rgba(17, 24, 39, 0.16);
+}
+
+.research-types-drawer-header {
   padding: 24px 24px 0;
   border-bottom: 0;
   display: flex;
@@ -458,34 +589,40 @@ $extraStyles = '
   gap: 16px;
 }
 
-.research-types-modal-header-main {
+.research-types-drawer-main {
   min-width: 0;
 }
 
-.research-types-modal-title {
+.research-types-drawer-title {
   margin: 0;
   font-size: 1.35rem;
   font-weight: 700;
   color: #566a7f;
 }
 
-.research-types-modal-copy {
+.research-types-drawer-copy {
   margin: 6px 0 0;
   color: #767676;
   font-size: 13px;
   line-height: 1.6;
 }
 
-.research-types-modal-header-actions {
+.research-types-drawer-header-actions {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
 }
 
-.research-types-modal-body {
+.research-types-drawer-body {
   padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.research-types-drawer-form {
+  display: grid;
+  gap: 16px;
 }
 
 .research-types-filter-form {
@@ -502,21 +639,39 @@ $extraStyles = '
 
 .research-types-filter-form .search-wrapper {
   min-width: 0;
+  position: relative;
+  display: block;
+}
+
+.research-types-filter-form .search-wrapper i,
+.research-types-filter-form .search-wrapper svg {
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  color: #8592a3;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .research-types-filter-form .search-wrapper .form-input {
   width: 100%;
   margin-bottom: 0;
+  padding-left: 44px;
 }
 
-.research-types-panel-grid .form-label-wrapper {
+.research-types-panel-grid .form-label-wrapper,
+.research-types-drawer-form .form-label-wrapper {
   width: 100%;
 }
 
 .research-types-filter-form .form-input,
 .research-types-filter-form .research-types-select,
 .research-types-panel-grid .form-input,
-.research-types-panel-grid .research-types-select {
+.research-types-panel-grid .research-types-select,
+.research-types-drawer-form .form-input {
   width: 100%;
   height: 44px;
   border: 0;
@@ -549,6 +704,10 @@ $extraStyles = '
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 18px;
+}
+
+.research-types-drawer-actions {
+  margin-top: 8px;
 }
 
 .research-types-panel-toggle {
@@ -587,7 +746,18 @@ $extraStyles = '
 .research-types-actions {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+}
+
+.research-types-actions-column,
+.research-types-actions-cell {
+  text-align: right;
+}
+
+.research-types-actions-cell {
+  width: 1%;
+  white-space: nowrap;
 }
 
 .research-types-inline-form {
@@ -630,6 +800,16 @@ $extraStyles = '
 
 .research-types-inline-btn.warning:hover {
   background-color: rgba(242, 100, 100, 0.22);
+}
+
+.research-types-inline-btn.danger {
+  color: #fff;
+  background-color: #d14343;
+}
+
+.research-types-inline-btn.danger:hover {
+  background-color: #b93434;
+  color: #fff;
 }
 
 .research-types-inline-btn.neutral {
@@ -675,6 +855,15 @@ $extraStyles = '
   color: #fff;
 }
 
+.research-types-panel-delete {
+  margin-top: 16px;
+  border-top-color: rgba(209, 67, 67, 0.18);
+}
+
+.research-types-delete-note {
+  color: #a64040;
+}
+
 @media (max-width: 1199px) {
   .research-types-filter-form {
     grid-template-columns: minmax(0, 1fr) minmax(180px, 220px) auto;
@@ -682,12 +871,12 @@ $extraStyles = '
 }
 
 @media (max-width: 991px) {
-  .research-types-modal-header {
+  .research-types-drawer-header {
     padding: 20px 20px 0;
     flex-wrap: wrap;
   }
 
-  .research-types-modal-body {
+  .research-types-drawer-body {
     padding: 20px;
   }
 
@@ -697,6 +886,10 @@ $extraStyles = '
 
   .research-types-filter-actions {
     justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .research-types-actions {
     flex-wrap: wrap;
   }
 
@@ -710,46 +903,219 @@ $extraStyles = '
 }
 ';
 
-$extraScripts = $shouldOpenEditorModal
-    ? <<<'HTML'
-<script>
-  document.addEventListener('DOMContentLoaded', function () {
-    var modalElement = document.getElementById('researchTypeEditorModal');
+$extraHead = '
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" />
+';
 
-    if (!modalElement || typeof bootstrap === 'undefined' || typeof bootstrap.Modal !== 'function') {
-      return;
+$extraScripts = <<<'HTML'
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+<script>
+  jQuery(function ($) {
+    var shouldOpenEditorDrawer = __OPEN_EDITOR_DRAWER__;
+    var researchTypeRecords = __RESEARCH_TYPE_RECORDS__;
+    var drawerDefaults = __RESEARCH_TYPE_DRAWER_DEFAULTS__;
+    var swalAlerts = __SWAL_ALERTS__;
+    var drawerElement = document.getElementById('researchTypeDrawer');
+    var drawerForm = drawerElement ? drawerElement.querySelector('form') : null;
+    var nameInput = drawerForm ? drawerForm.querySelector('input[name="research_type"]') : null;
+    var idInput = drawerForm ? drawerForm.querySelector('input[name="researchtypeid"]') : null;
+    var drawerTitleElement = document.getElementById('researchTypeDrawerLabel');
+    var drawerSubmitButton = drawerForm ? drawerForm.querySelector('button[type="submit"]') : null;
+    var drawerInstance = null;
+    var recordMap = {};
+    var modalHash = window.location.hash || '';
+
+    if (Array.isArray(researchTypeRecords)) {
+      researchTypeRecords.forEach(function (record) {
+        var recordId = parseInt(record && record.researchtypeid, 10);
+
+        if (recordId > 0) {
+          recordMap[recordId] = record;
+        }
+      });
     }
 
-    modalElement.addEventListener('shown.bs.modal', function () {
-      var input = modalElement.querySelector('input[name="research_type"]');
+    if (drawerElement && typeof bootstrap !== 'undefined' && typeof bootstrap.Offcanvas === 'function') {
+      drawerInstance = bootstrap.Offcanvas.getOrCreateInstance(drawerElement);
+    }
 
-      if (input) {
-        input.focus();
+    function normalizedId(value) {
+      var parsedValue = parseInt(value, 10);
+
+      return !isNaN(parsedValue) && parsedValue > 0 ? parsedValue : 0;
+    }
+
+    function drawerState(record) {
+      if (record && typeof record === 'object') {
+        return record;
       }
+
+      if (drawerDefaults && typeof drawerDefaults === 'object') {
+        return drawerDefaults;
+      }
+
+      return {};
+    }
+
+    function showSwalAlerts(index) {
+      if (typeof Swal === 'undefined' || !Array.isArray(swalAlerts) || index >= swalAlerts.length) {
+        return;
+      }
+
+      var alert = swalAlerts[index] || {};
+      var options = {
+        icon: alert.icon || 'info',
+        title: alert.title || '',
+        text: alert.text || '',
+        confirmButtonColor: '#2f49d1'
+      };
+
+      if (alert.toast) {
+        options.toast = true;
+        options.position = 'top-end';
+        options.showConfirmButton = false;
+        options.timer = 3200;
+        options.timerProgressBar = true;
+      }
+
+      Swal.fire(options).then(function () {
+        showSwalAlerts(index + 1);
+      });
+    }
+
+    function clearDrawerState(expectedHash) {
+      if (window.history && typeof window.history.replaceState === 'function') {
+        var nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.delete('edit');
+
+        if (expectedHash && nextUrl.hash === expectedHash) {
+          nextUrl.hash = '';
+        }
+
+        window.history.replaceState(null, document.title, nextUrl.pathname + nextUrl.search + nextUrl.hash);
+      }
+    }
+
+    function populateDrawer(record) {
+      var state = drawerState(record);
+      var researchTypeId = normalizedId(state.researchtypeid || state.id);
+      var researchTypeName = String(state.research_type || '');
+
+      if (idInput) {
+        idInput.value = researchTypeId > 0 ? String(researchTypeId) : '';
+      }
+
+      if (nameInput) {
+        nameInput.value = researchTypeName;
+      }
+
+      if (drawerTitleElement) {
+        drawerTitleElement.textContent = 'Add Research Type';
+      }
+
+      if (drawerSubmitButton) {
+        drawerSubmitButton.textContent = researchTypeId > 0 ? 'Save Research Type' : 'Create Type';
+      }
+    }
+
+    function openDrawer() {
+      if (drawerInstance) {
+        drawerInstance.show();
+      }
+    }
+
+    function initDeleteConfirmation() {
+      $(document).on('submit', '.research-types-delete-form', function (event) {
+        var form = this;
+
+        if (form.dataset.confirmed === 'true' || typeof Swal === 'undefined') {
+          return true;
+        }
+
+        event.preventDefault();
+
+        Swal.fire({
+          icon: 'warning',
+          title: 'Delete research type?',
+          text: 'This will permanently remove the research type if it is not assigned to any research records.',
+          showCancelButton: true,
+          confirmButtonColor: '#d14343',
+          cancelButtonColor: '#8592a3',
+          confirmButtonText: 'Yes, delete it',
+          cancelButtonText: 'Cancel'
+        }).then(function (result) {
+          if (!result.isConfirmed) {
+            return;
+          }
+
+          form.dataset.confirmed = 'true';
+          form.submit();
+        });
+
+        return false;
+      });
+    }
+
+    $(document).on('click', '[data-research-type-open-add]', function () {
+      populateDrawer(drawerDefaults);
     });
 
-    bootstrap.Modal.getOrCreateInstance(modalElement).show();
+    $(document).on('click', '[data-research-type-edit-trigger]', function (event) {
+      var recordId = normalizedId($(this).data('recordId'));
+      var record = recordMap[recordId] || null;
+
+      if (!record || !drawerInstance) {
+        return;
+      }
+
+      event.preventDefault();
+      populateDrawer(record);
+      openDrawer();
+    });
+
+    if (drawerElement) {
+      $(drawerElement).on('shown.bs.offcanvas', function () {
+        clearDrawerState('#research-type-drawer');
+
+        if (nameInput) {
+          nameInput.focus();
+        }
+      });
+
+      $(drawerElement).on('hidden.bs.offcanvas', function () {
+        clearDrawerState('#research-type-drawer');
+        populateDrawer(drawerDefaults);
+      });
+    }
+
+    initDeleteConfirmation();
+    showSwalAlerts(0);
+
+    if (shouldOpenEditorDrawer) {
+      openDrawer();
+    } else if (modalHash === '#research-type-drawer') {
+      openDrawer();
+    }
+
+    window.addEventListener('hashchange', function () {
+      if (window.location.hash === '#research-type-drawer') {
+        openDrawer();
+      }
+    });
   });
 </script>
-HTML
-    : '';
+HTML;
+
+$extraScripts = str_replace(
+    ['__OPEN_EDITOR_DRAWER__', '__RESEARCH_TYPE_RECORDS__', '__RESEARCH_TYPE_DRAWER_DEFAULTS__', '__SWAL_ALERTS__'],
+    [$shouldOpenEditorDrawer ? 'true' : 'false', $researchTypeRecordsJson, $researchTypeDrawerDefaultsJson, $swalAlertsJson],
+    $extraScripts
+);
 
 ob_start();
 ?>
 <main class="main users chart-page" id="skip-target">
   <div class="container">
-    <div class="main-title-wrapper">
-      <h2 class="main-title">Research Type Management</h2>
-    </div>
-
-    <?php if ($actionSuccess !== null): ?>
-      <div class="research-types-alert success"><?= e($actionSuccess); ?></div>
-    <?php endif; ?>
-
-    <?php if ($actionError !== null): ?>
-      <div class="research-types-alert error"><?= e($actionError); ?></div>
-    <?php endif; ?>
-
     <?php if ($pageError !== null): ?>
       <article class="white-block research-types-panel">
         <h3 class="white-block__title">Unable to load research types</h3>
@@ -781,22 +1147,13 @@ ob_start();
             <button
               class="primary-default-btn"
               type="button"
-              data-bs-toggle="modal"
-              data-bs-target="#researchTypeEditorModal"
+              data-research-type-open-add
+              data-bs-toggle="offcanvas"
+              data-bs-target="#researchTypeDrawer"
             >
-              <?= e($editorModalTitle); ?>
+              Add Research Type
             </button>
-
-            <?php if ($isEditing): ?>
-              <a class="secondary-default-btn" href="<?= e(administrator_research_type_url($pageFiltersWithoutEditor)); ?>">Clear Edit</a>
-            <?php endif; ?>
           </div>
-
-          <?php if ($isEditing): ?>
-            <span class="<?= e($selectedResearchTypeActive ? 'badge-active' : 'badge-disabled'); ?>">
-              <?= e(administrator_research_type_status_label($selectedResearchTypeActive)); ?>
-            </span>
-          <?php endif; ?>
         </div>
 
         <div class="sort-bar">
@@ -826,14 +1183,13 @@ ob_start();
                 <th>No.</th>
                 <th>Research Type</th>
                 <th>Status</th>
-                <th>Updated</th>
-                <th>Action</th>
+                <th class="research-types-actions-column">Action</th>
               </tr>
             </thead>
             <tbody>
               <?php if ($researchTypes === []): ?>
                 <tr>
-                  <td class="research-types-empty" colspan="5">No research types matched the current filters.</td>
+                  <td class="research-types-empty" colspan="4">No research types matched the current filters.</td>
                 </tr>
               <?php endif; ?>
 
@@ -852,12 +1208,18 @@ ob_start();
                       <?= e(administrator_research_type_status_label($isActive)); ?>
                     </span>
                   </td>
-                  <td><?= e(administrator_research_type_datetime_label((string) ($record['updated_at'] ?? ''))); ?></td>
-                  <td>
+                  <td class="research-types-actions-cell">
                     <div class="research-types-actions">
-                      <a class="research-types-inline-btn" href="<?= e($editUrl); ?>">Edit</a>
+                      <a
+                        class="research-types-inline-btn"
+                        href="<?= e($editUrl); ?>"
+                        data-research-type-edit-trigger
+                        data-record-id="<?= e((string) $record['researchtypeid']); ?>"
+                      >
+                        Edit
+                      </a>
 
-                      <form class="research-types-inline-form" method="post" action="<?= e(administrator_research_type_url($pageFiltersWithEditor)); ?>">
+                      <form class="research-types-inline-form" method="post" action="<?= e($pageActionUrl); ?>">
                         <input type="hidden" name="csrf_token" value="<?= e(csrf_token()); ?>">
                         <input type="hidden" name="action" value="toggle_research_type">
                         <input type="hidden" name="researchtypeid" value="<?= e((string) $record['researchtypeid']); ?>">
@@ -865,6 +1227,17 @@ ob_start();
                         <button class="research-types-inline-btn <?= e($isActive ? 'warning' : 'success'); ?>" type="submit">
                           <?= e($isActive ? 'Set Inactive' : 'Activate'); ?>
                         </button>
+                      </form>
+
+                      <form
+                        class="research-types-inline-form research-types-delete-form"
+                        method="post"
+                        action="<?= e($pageActionUrl); ?>"
+                      >
+                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()); ?>">
+                        <input type="hidden" name="action" value="delete_research_type">
+                        <input type="hidden" name="researchtypeid" value="<?= e((string) $record['researchtypeid']); ?>">
+                        <button class="research-types-inline-btn danger" type="submit">Delete</button>
                       </form>
                     </div>
                   </td>
@@ -898,86 +1271,45 @@ ob_start();
     </div>
   </div>
 
-  <div class="modal fade" id="researchTypeEditorModal" tabindex="-1" aria-labelledby="researchTypeEditorModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable research-types-modal-dialog">
-      <div class="modal-content research-types-modal-content">
-        <div class="modal-header research-types-modal-header">
-          <div class="research-types-modal-header-main">
-            <h3 class="research-types-modal-title" id="researchTypeEditorModalLabel"><?= e($editorModalTitle); ?></h3>
-            <p class="research-types-modal-copy">Save research type names here so future research forms can load them dynamically from the database instead of hardcoding them.</p>
-          </div>
-
-          <div class="research-types-modal-header-actions">
-            <?php if ($isEditing): ?>
-              <span class="<?= e($selectedResearchTypeActive ? 'badge-active' : 'badge-disabled'); ?>">
-                <?= e(administrator_research_type_status_label($selectedResearchTypeActive)); ?>
-              </span>
-            <?php endif; ?>
-
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-        </div>
-
-        <div class="modal-body research-types-modal-body">
-          <?php if ($formError !== null): ?>
-            <div class="research-types-alert error"><?= e($formError); ?></div>
-          <?php endif; ?>
-
-          <form method="post" action="<?= e(administrator_research_type_url($pageFiltersWithEditor)); ?>">
-            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()); ?>">
-            <input type="hidden" name="action" value="save_research_type">
-            <input type="hidden" name="researchtypeid" value="<?= e((string) $selectedResearchTypeId); ?>">
-
-            <div class="research-types-panel-grid">
-              <label class="form-label-wrapper">
-                <span class="form-label">Research Type Name</span>
-                <input
-                  class="form-input"
-                  type="text"
-                  name="research_type"
-                  maxlength="100"
-                  value="<?= e((string) ($selectedResearchType['research_type'] ?? '')); ?>"
-                  placeholder="Example: Thesis"
-                  required
-                >
-                <span class="research-types-field-note">Examples: Thesis, Capstone, Copyright, Other.</span>
-              </label>
-
-              <div class="form-label-wrapper">
-                <span class="form-label">Last Updated</span>
-                <input
-                  class="form-input"
-                  type="text"
-                  value="<?= e($isEditing ? administrator_research_type_datetime_label((string) ($selectedResearchType['updated_at'] ?? '')) : 'New record'); ?>"
-                  readonly
-                >
-              </div>
-            </div>
-
-            <div class="research-types-panel-actions">
-              <button class="primary-default-btn" type="submit"><?= e($isEditing ? 'Save Changes' : 'Create Type'); ?></button>
-              <?php if ($isEditing): ?>
-                <a class="secondary-default-btn" href="<?= e(administrator_research_type_url($pageFiltersWithoutEditor)); ?>">Cancel Edit</a>
-              <?php else: ?>
-                <button class="secondary-default-btn" type="button" data-bs-dismiss="modal">Close</button>
-              <?php endif; ?>
-            </div>
-          </form>
-
-          <?php if ($isEditing): ?>
-            <form class="research-types-panel-toggle" method="post" action="<?= e(administrator_research_type_url($pageFiltersWithEditor)); ?>">
-              <input type="hidden" name="csrf_token" value="<?= e(csrf_token()); ?>">
-              <input type="hidden" name="action" value="toggle_research_type">
-              <input type="hidden" name="researchtypeid" value="<?= e((string) $selectedResearchTypeId); ?>">
-              <input type="hidden" name="target_status" value="<?= $selectedResearchTypeActive ? '0' : '1'; ?>">
-              <button class="research-types-inline-btn <?= e($selectedResearchTypeActive ? 'warning' : 'success'); ?>" type="submit">
-                <?= e($selectedResearchTypeActive ? 'Set Inactive' : 'Activate Type'); ?>
-              </button>
-              <span class="research-types-field-note">Inactive types stay saved in the database but can be hidden from future active selections.</span>
-            </form>
-          <?php endif; ?>
-        </div>
+  <div class="offcanvas offcanvas-end research-types-drawer" tabindex="-1" id="researchTypeDrawer" aria-labelledby="researchTypeDrawerLabel">
+    <div class="offcanvas-header research-types-drawer-header">
+      <div class="research-types-drawer-main">
+        <h3 class="research-types-drawer-title" id="researchTypeDrawerLabel"><?= e($drawerTitle); ?></h3>
+        <p class="research-types-drawer-copy">Save research type names here so future research forms can load them dynamically from the database instead of hardcoding them.</p>
       </div>
+
+      <div class="research-types-drawer-header-actions">
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+      </div>
+    </div>
+
+    <div class="offcanvas-body research-types-drawer-body">
+      <form method="post" action="<?= e($pageActionUrl); ?>">
+        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()); ?>">
+        <input type="hidden" name="action" value="save_research_type">
+        <input type="hidden" name="researchtypeid" value="<?= e((string) $selectedResearchTypeId); ?>">
+
+        <div class="research-types-drawer-form">
+          <label class="form-label-wrapper">
+            <span class="form-label">Research Type Name</span>
+            <input
+              class="form-input"
+              type="text"
+              name="research_type"
+              maxlength="100"
+              value="<?= e((string) ($selectedResearchType['research_type'] ?? '')); ?>"
+              placeholder="Example: Thesis"
+              required
+            >
+            <span class="research-types-field-note">Examples: Thesis, Capstone, Copyright, Other.</span>
+          </label>
+        </div>
+
+        <div class="research-types-panel-actions research-types-drawer-actions">
+          <button class="primary-default-btn" type="submit"><?= e($drawerSubmitLabel); ?></button>
+          <button class="secondary-default-btn" type="button" data-bs-dismiss="offcanvas">Close</button>
+        </div>
+      </form>
     </div>
   </div>
 </main>
@@ -988,6 +1320,7 @@ AdminPage::render([
     'title' => 'Administrator | Research Type',
     'current_page' => 'research_type',
     'main_content' => $mainContent,
+    'extra_head' => $extraHead,
     'extra_scripts' => $extraScripts,
     'extra_styles' => $extraStyles,
 ]);

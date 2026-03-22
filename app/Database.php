@@ -146,6 +146,35 @@ final class Database
         }
     }
 
+    public static function ensureCampusTable(): void
+    {
+        self::connection()->exec(
+            'CREATE TABLE IF NOT EXISTS tblcampus (
+                campusid INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                campusname VARCHAR(25) NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+
+        unset(self::$tableColumns['tblcampus']);
+        self::ensureAutoIncrementPrimaryKey('tblcampus', 'campusid', 'INT(11)');
+    }
+
+    public static function ensureCollegeTable(): void
+    {
+        self::ensureCampusTable();
+
+        self::connection()->exec(
+            'CREATE TABLE IF NOT EXISTS tblcollege (
+                collegeid INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                collegename TEXT NOT NULL,
+                collegecampus TEXT NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+
+        unset(self::$tableColumns['tblcollege']);
+        self::ensureAutoIncrementPrimaryKey('tblcollege', 'collegeid', 'INT(11)');
+    }
+
     public static function ensureAcademicYearTable(): void
     {
         self::connection()->exec(
@@ -179,9 +208,11 @@ final class Database
 
     public static function ensureCourseTable(): void
     {
+        self::ensureCollegeTable();
+
         self::connection()->exec(
             'CREATE TABLE IF NOT EXISTS tblcourse (
-                courseid INT(11) NOT NULL PRIMARY KEY,
+                courseid INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
                 coursecode VARCHAR(30) NOT NULL,
                 coursedescription VARCHAR(100) NOT NULL,
                 coursemajor VARCHAR(50) NOT NULL DEFAULT \'\',
@@ -191,6 +222,7 @@ final class Database
         );
 
         unset(self::$tableColumns['tblcourse']);
+        self::ensureAutoIncrementPrimaryKey('tblcourse', 'courseid', 'INT(11)');
 
         $seedStatement = self::connection()->prepare(
             'INSERT IGNORE INTO tblcourse (
@@ -246,6 +278,8 @@ final class Database
         self::ensureResearchTypeTable();
         self::ensureAccountStatusColumn();
         self::ensureAcademicYearTable();
+        self::ensureCampusTable();
+        self::ensureCollegeTable();
         self::ensureCourseTable();
 
         $accountIdType = self::columnType('tblaccount', 'accountid') ?? 'INT';
@@ -325,6 +359,8 @@ final class Database
             'panelist_accountids' => 'ALTER TABLE tblresearches ADD COLUMN panelist_accountids VARCHAR(255) NULL',
             'statistician_accountid' => 'ALTER TABLE tblresearches ADD COLUMN statistician_accountid ' . $accountIdType . ' NULL',
             'english_critic_accountid' => 'ALTER TABLE tblresearches ADD COLUMN english_critic_accountid ' . $accountIdType . ' NULL',
+            'normalized_title' => 'ALTER TABLE tblresearches ADD COLUMN normalized_title TEXT NULL',
+            'similarity_refreshed_at' => 'ALTER TABLE tblresearches ADD COLUMN similarity_refreshed_at TIMESTAMP NULL DEFAULT NULL',
         ];
 
         foreach ($additionalColumns as $column => $statement) {
@@ -414,8 +450,154 @@ final class Database
         );
 
         self::ensureManuscriptPanelistTable();
+        self::ensureTitleSimilarityTables();
 
         unset(self::$tableColumns['tblresearches']);
+    }
+
+    public static function ensureTitleSimilarityTables(): void
+    {
+        $manuscriptIdType = self::columnType('tblresearches', 'titleid') ?? 'INT(10) UNSIGNED';
+        $accountIdType = self::columnType('tblaccount', 'accountid') ?? 'INT';
+
+        self::connection()->exec(
+            'CREATE TABLE IF NOT EXISTS tbltitlesimilarity (
+                similarityid INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                source_titleid ' . $manuscriptIdType . ' NOT NULL,
+                target_titleid ' . $manuscriptIdType . ' NOT NULL,
+                jaccard_score DECIMAL(6,5) NOT NULL DEFAULT 0.00000,
+                cosine_score DECIMAL(6,5) NOT NULL DEFAULT 0.00000,
+                levenshtein_score DECIMAL(6,5) NOT NULL DEFAULT 0.00000,
+                dice_score DECIMAL(6,5) NOT NULL DEFAULT 0.00000,
+                hybrid_score DECIMAL(6,5) NOT NULL DEFAULT 0.00000,
+                score_bucket VARCHAR(20) NOT NULL DEFAULT \'low\',
+                rank_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+                computed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+
+        self::ensureColumnType('tbltitlesimilarity', 'source_titleid', $manuscriptIdType, false);
+        self::ensureColumnType('tbltitlesimilarity', 'target_titleid', $manuscriptIdType, false);
+
+        self::connection()->exec(
+            'DELETE ts
+             FROM tbltitlesimilarity ts
+             LEFT JOIN tblresearches source ON source.titleid = ts.source_titleid
+             LEFT JOIN tblresearches target ON target.titleid = ts.target_titleid
+             WHERE source.titleid IS NULL
+                OR target.titleid IS NULL
+                OR ts.source_titleid = ts.target_titleid'
+        );
+
+        self::ensureIndex(
+            'tbltitlesimilarity',
+            'uniq_tbltitlesimilarity_pair',
+            'source_titleid, target_titleid',
+            true
+        );
+        self::ensureIndex(
+            'tbltitlesimilarity',
+            'idx_tbltitlesimilarity_source_rank',
+            'source_titleid, rank_order'
+        );
+        self::ensureIndex(
+            'tbltitlesimilarity',
+            'idx_tbltitlesimilarity_target_titleid',
+            'target_titleid'
+        );
+        self::ensureIndex(
+            'tbltitlesimilarity',
+            'idx_tbltitlesimilarity_source_hybrid',
+            'source_titleid, hybrid_score'
+        );
+
+        self::ensureForeignKey(
+            'tbltitlesimilarity',
+            'fk_tbltitlesimilarity_source_title',
+            'source_titleid',
+            'tblresearches',
+            'titleid',
+            'CASCADE'
+        );
+        self::ensureForeignKey(
+            'tbltitlesimilarity',
+            'fk_tbltitlesimilarity_target_title',
+            'target_titleid',
+            'tblresearches',
+            'titleid',
+            'CASCADE'
+        );
+
+        self::connection()->exec(
+            'CREATE TABLE IF NOT EXISTS tbltitlesimilarity_review (
+                similarity_reviewid INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                source_titleid ' . $manuscriptIdType . ' NOT NULL,
+                target_titleid ' . $manuscriptIdType . ' NOT NULL,
+                reviewer_accountid ' . $accountIdType . ' NOT NULL,
+                expert_label VARCHAR(30) NOT NULL,
+                review_note TEXT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+
+        self::ensureColumnType('tbltitlesimilarity_review', 'source_titleid', $manuscriptIdType, false);
+        self::ensureColumnType('tbltitlesimilarity_review', 'target_titleid', $manuscriptIdType, false);
+        self::ensureColumnType('tbltitlesimilarity_review', 'reviewer_accountid', $accountIdType, false);
+
+        self::connection()->exec(
+            'DELETE tr
+             FROM tbltitlesimilarity_review tr
+             LEFT JOIN tblresearches source ON source.titleid = tr.source_titleid
+             LEFT JOIN tblresearches target ON target.titleid = tr.target_titleid
+             LEFT JOIN tblaccount reviewer ON reviewer.accountid = tr.reviewer_accountid
+             WHERE source.titleid IS NULL
+                OR target.titleid IS NULL
+                OR reviewer.accountid IS NULL
+                OR tr.source_titleid = tr.target_titleid'
+        );
+
+        self::ensureIndex(
+            'tbltitlesimilarity_review',
+            'uniq_tbltitlesimilarity_review_triplet',
+            'source_titleid, target_titleid, reviewer_accountid',
+            true
+        );
+        self::ensureIndex(
+            'tbltitlesimilarity_review',
+            'idx_tbltitlesimilarity_review_reviewer',
+            'reviewer_accountid'
+        );
+        self::ensureIndex(
+            'tbltitlesimilarity_review',
+            'idx_tbltitlesimilarity_review_label',
+            'expert_label'
+        );
+
+        self::ensureForeignKey(
+            'tbltitlesimilarity_review',
+            'fk_tbltitlesimilarity_review_source_title',
+            'source_titleid',
+            'tblresearches',
+            'titleid',
+            'CASCADE'
+        );
+        self::ensureForeignKey(
+            'tbltitlesimilarity_review',
+            'fk_tbltitlesimilarity_review_target_title',
+            'target_titleid',
+            'tblresearches',
+            'titleid',
+            'CASCADE'
+        );
+        self::ensureForeignKey(
+            'tbltitlesimilarity_review',
+            'fk_tbltitlesimilarity_review_account',
+            'reviewer_accountid',
+            'tblaccount',
+            'accountid',
+            'CASCADE'
+        );
     }
 
     public static function hasAccountColumn(string $column): bool
@@ -625,6 +807,21 @@ final class Database
         string $referenceColumn,
         string $onDelete
     ): void {
+        $constraintOwnerTable = self::foreignKeyOwnerTable($constraintName);
+
+        if ($constraintOwnerTable !== null && strcasecmp($constraintOwnerTable, $table) !== 0) {
+            if (preg_match('/_old$/i', $constraintOwnerTable) === 1) {
+                self::connection()->exec(
+                    'ALTER TABLE ' . $constraintOwnerTable . '
+                     DROP FOREIGN KEY ' . $constraintName
+                );
+            } else {
+                throw new RuntimeException(
+                    'Foreign key constraint "' . $constraintName . '" already exists on table "' . $constraintOwnerTable . '".'
+                );
+            }
+        }
+
         $existingReferenceTable = self::foreignKeyReferenceTable($table, $constraintName);
 
         if ($existingReferenceTable !== null) {
@@ -646,6 +843,26 @@ final class Database
              FOREIGN KEY (' . $column . ') REFERENCES ' . $referenceTable . ' (' . $referenceColumn . ')
              ON DELETE ' . $onDelete . '
              ON UPDATE CASCADE'
+        );
+    }
+
+    private static function ensureAutoIncrementPrimaryKey(string $table, string $column, string $type): void
+    {
+        $columnMeta = self::columnMeta($table, $column);
+
+        if (!is_array($columnMeta)) {
+            return;
+        }
+
+        $extra = strtolower(trim((string) ($columnMeta['Extra'] ?? '')));
+
+        if ($extra === 'auto_increment') {
+            return;
+        }
+
+        self::connection()->exec(
+            'ALTER TABLE ' . $table . '
+             MODIFY ' . $column . ' ' . $type . ' NOT NULL AUTO_INCREMENT'
         );
     }
 
@@ -707,6 +924,25 @@ final class Database
         $referenceTable = $statement->fetchColumn();
 
         return is_string($referenceTable) && $referenceTable !== '' ? $referenceTable : null;
+    }
+
+    private static function foreignKeyOwnerTable(string $constraintName): ?string
+    {
+        $statement = self::connection()->prepare(
+            'SELECT TABLE_NAME
+             FROM information_schema.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND CONSTRAINT_NAME = :constraint_name
+               AND REFERENCED_TABLE_NAME IS NOT NULL
+             LIMIT 1'
+        );
+        $statement->execute([
+            'constraint_name' => $constraintName,
+        ]);
+
+        $table = $statement->fetchColumn();
+
+        return is_string($table) && $table !== '' ? $table : null;
     }
 
     private static function constraintExists(string $table, string $constraintName): bool

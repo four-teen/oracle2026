@@ -823,10 +823,6 @@ ob_start();
 ?>
 <main class="main users chart-page" id="skip-target">
   <div class="container">
-    <div class="main-title-wrapper">
-      <h2 class="main-title">Accounts Management</h2>
-    </div>
-
     <?php if ($actionSuccess !== null): ?>
       <div class="accounts-alert success"><?= e($actionSuccess); ?></div>
     <?php endif; ?>

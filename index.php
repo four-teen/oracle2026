@@ -37,6 +37,15 @@ function landing_research_normalize_text(?string $value): string
     return is_string($normalized) ? $normalized : '';
 }
 
+function landing_research_lower(string $value): string
+{
+    if (function_exists('mb_strtolower')) {
+        return mb_strtolower($value, 'UTF-8');
+    }
+
+    return strtolower($value);
+}
+
 function landing_research_trim(string $value, int $limit = 220): string
 {
     $value = landing_research_normalize_text($value);
@@ -150,6 +159,360 @@ function landing_research_date_label(array $research): string
     return 'Date unavailable';
 }
 
+function landing_research_static_views(string $title, int $year): int
+{
+    $seed = (int) sprintf('%u', crc32(strtolower($title) . '|' . (string) $year));
+
+    return 120 + ($seed % 1380);
+}
+
+function landing_research_similarity_normalized_title(string $title): string
+{
+    $normalized = landing_research_lower(landing_research_normalize_text($title));
+    $normalized = preg_replace('/[^\p{L}\p{N}\s]+/u', ' ', $normalized);
+
+    if (!is_string($normalized)) {
+        return '';
+    }
+
+    $normalized = preg_replace('/\s+/u', ' ', trim($normalized));
+
+    return is_string($normalized) ? $normalized : '';
+}
+
+function landing_research_similarity_tokens(string $title): array
+{
+    static $stopWords = [
+        'a' => true,
+        'an' => true,
+        'and' => true,
+        'at' => true,
+        'based' => true,
+        'by' => true,
+        'for' => true,
+        'from' => true,
+        'in' => true,
+        'of' => true,
+        'on' => true,
+        'or' => true,
+        'the' => true,
+        'to' => true,
+        'using' => true,
+        'with' => true,
+    ];
+
+    $normalized = landing_research_similarity_normalized_title($title);
+
+    if ($normalized === '') {
+        return [];
+    }
+
+    $tokens = preg_split('/\s+/u', $normalized) ?: [];
+    $filtered = [];
+
+    foreach ($tokens as $token) {
+        $token = landing_research_normalize_text($token);
+
+        if ($token === '' || strlen($token) <= 1 || isset($stopWords[$token])) {
+            continue;
+        }
+
+        $filtered[] = $token;
+    }
+
+    return $filtered;
+}
+
+function landing_research_similarity_frequencies(array $tokens): array
+{
+    $frequencies = [];
+
+    foreach ($tokens as $token) {
+        if (!isset($frequencies[$token])) {
+            $frequencies[$token] = 0;
+        }
+
+        $frequencies[$token]++;
+    }
+
+    return $frequencies;
+}
+
+function landing_research_jaccard_similarity(array $tokensA, array $tokensB): float
+{
+    $setA = array_fill_keys(array_values(array_unique($tokensA)), true);
+    $setB = array_fill_keys(array_values(array_unique($tokensB)), true);
+    $union = array_unique(array_merge(array_keys($setA), array_keys($setB)));
+    $unionCount = count($union);
+
+    if ($unionCount === 0) {
+        return 0.0;
+    }
+
+    $intersectionCount = count(array_intersect(array_keys($setA), array_keys($setB)));
+
+    return $intersectionCount / $unionCount;
+}
+
+function landing_research_dice_similarity(array $tokensA, array $tokensB): float
+{
+    $setA = array_values(array_unique($tokensA));
+    $setB = array_values(array_unique($tokensB));
+    $setTotal = count($setA) + count($setB);
+
+    if ($setTotal === 0) {
+        return 0.0;
+    }
+
+    $intersectionCount = count(array_intersect($setA, $setB));
+
+    return (2 * $intersectionCount) / $setTotal;
+}
+
+function landing_research_cosine_similarity(array $frequenciesA, array $frequenciesB): float
+{
+    if ($frequenciesA === [] || $frequenciesB === []) {
+        return 0.0;
+    }
+
+    $dotProduct = 0.0;
+    $magnitudeA = 0.0;
+    $magnitudeB = 0.0;
+
+    foreach ($frequenciesA as $token => $count) {
+        $magnitudeA += $count * $count;
+
+        if (isset($frequenciesB[$token])) {
+            $dotProduct += $count * $frequenciesB[$token];
+        }
+    }
+
+    foreach ($frequenciesB as $count) {
+        $magnitudeB += $count * $count;
+    }
+
+    $denominator = sqrt($magnitudeA) * sqrt($magnitudeB);
+
+    if ($denominator <= 0.0) {
+        return 0.0;
+    }
+
+    return $dotProduct / $denominator;
+}
+
+function landing_research_levenshtein_similarity(string $titleA, string $titleB): float
+{
+    if ($titleA === '' || $titleB === '') {
+        return 0.0;
+    }
+
+    $maxLength = max(strlen($titleA), strlen($titleB));
+
+    if ($maxLength === 0) {
+        return 0.0;
+    }
+
+    $distance = levenshtein($titleA, $titleB);
+    $score = 1 - (min($distance, $maxLength) / $maxLength);
+
+    return max(0.0, min(1.0, $score));
+}
+
+function landing_research_hybrid_similarity(array $scores): float
+{
+    $weights = [
+        'jaccard' => 0.20,
+        'cosine' => 0.30,
+        'levenshtein' => 0.20,
+        'dice' => 0.30,
+    ];
+
+    $hybridScore = 0.0;
+
+    foreach ($weights as $key => $weight) {
+        $hybridScore += ((float) ($scores[$key] ?? 0.0)) * $weight;
+    }
+
+    return max(0.0, min(1.0, $hybridScore));
+}
+
+function landing_research_similarity_definitions(): array
+{
+    return [
+        'hybrid' => [
+            'label' => 'Hybrid',
+            'threshold' => 0.56,
+            'featured' => true,
+        ],
+        'jaccard' => [
+            'label' => 'Jaccard',
+            'threshold' => 0.34,
+            'featured' => false,
+        ],
+        'cosine' => [
+            'label' => 'Cosine',
+            'threshold' => 0.50,
+            'featured' => false,
+        ],
+        'levenshtein' => [
+            'label' => 'Levenshtein',
+            'threshold' => 0.68,
+            'featured' => false,
+        ],
+        'dice' => [
+            'label' => 'Sorensen-Dice',
+            'threshold' => 0.44,
+            'featured' => false,
+        ],
+    ];
+}
+
+function landing_research_similarity_percentage_label(float $score): string
+{
+    $score = max(0.0, min(1.0, $score));
+
+    return (string) round($score * 100) . '%';
+}
+
+function landing_research_similarity_summary_from_totals(array $totals, int $titlePoolCount): array
+{
+    $definitions = landing_research_similarity_definitions();
+    $algorithmCards = [];
+
+    foreach ($definitions as $key => $definition) {
+        $count = (int) ($totals['counts'][$key] ?? 0);
+        $averageScore = $count > 0
+            ? ((float) ($totals['matched_score_sums'][$key] ?? 0.0)) / $count
+            : 0.0;
+        $titleLabel = $count === 1 ? '1 title' : (string) $count . ' titles';
+
+        $algorithmCards[] = [
+            'label' => $definition['label'],
+            'detail' => $titleLabel . ' | ' . landing_research_similarity_percentage_label($averageScore) . ' avg',
+            'featured' => (bool) ($definition['featured'] ?? false),
+        ];
+    }
+
+    if ($titlePoolCount <= 1) {
+        return [
+            'headline' => 'Only one indexed title is available for similarity comparison right now.',
+            'note' => 'Similarity counts will appear once more titles are added to the live collection.',
+            'algorithms' => $algorithmCards,
+        ];
+    }
+
+    $hybridCount = (int) ($totals['counts']['hybrid'] ?? 0);
+    $hybridAverage = $hybridCount > 0
+        ? ((float) ($totals['matched_score_sums']['hybrid'] ?? 0.0)) / $hybridCount
+        : 0.0;
+
+    if ($hybridCount > 0) {
+        return [
+            'headline' => 'Hybrid scoring found ' . $hybridCount . ' related ' . ($hybridCount === 1 ? 'title' : 'titles') . ' in this live collection.',
+            'note' => 'Average weighted probability: ' . landing_research_similarity_percentage_label($hybridAverage) . ' across Jaccard, Cosine, Levenshtein, and Sorensen-Dice.',
+            'algorithms' => $algorithmCards,
+        ];
+    }
+
+    return [
+        'headline' => 'Hybrid scoring did not detect strong related-title matches yet.',
+        'note' => 'Per-algorithm title probabilities are still shown below for the current live collection.',
+        'algorithms' => $algorithmCards,
+    ];
+}
+
+function landing_research_similarity_summary_empty(int $titlePoolCount): array
+{
+    $definitions = landing_research_similarity_definitions();
+    $emptyTotals = [
+        'counts' => array_fill_keys(array_keys($definitions), 0),
+        'matched_score_sums' => array_fill_keys(array_keys($definitions), 0.0),
+    ];
+
+    return landing_research_similarity_summary_from_totals($emptyTotals, $titlePoolCount);
+}
+
+function landing_research_title_similarity_summaries(array $researchRows): array
+{
+    $definitions = landing_research_similarity_definitions();
+    $preparedTitles = [];
+
+    foreach ($researchRows as $index => $researchRow) {
+        $title = landing_research_normalize_text($researchRow['title'] ?? '');
+
+        if ($title === '') {
+            continue;
+        }
+
+        $normalizedTitle = landing_research_similarity_normalized_title($title);
+        $tokens = landing_research_similarity_tokens($title);
+
+        $preparedTitles[$index] = [
+            'normalized_title' => $normalizedTitle,
+            'tokens' => $tokens,
+            'frequencies' => landing_research_similarity_frequencies($tokens),
+        ];
+    }
+
+    $titlePoolCount = count($preparedTitles);
+    $totalsByIndex = [];
+
+    foreach (array_keys($preparedTitles) as $index) {
+        $totalsByIndex[$index] = [
+            'counts' => array_fill_keys(array_keys($definitions), 0),
+            'matched_score_sums' => array_fill_keys(array_keys($definitions), 0.0),
+        ];
+    }
+
+    $preparedIndexes = array_keys($preparedTitles);
+    $preparedCount = count($preparedIndexes);
+
+    for ($outer = 0; $outer < $preparedCount; $outer++) {
+        $leftIndex = $preparedIndexes[$outer];
+        $leftTitle = $preparedTitles[$leftIndex];
+
+        for ($inner = $outer + 1; $inner < $preparedCount; $inner++) {
+            $rightIndex = $preparedIndexes[$inner];
+            $rightTitle = $preparedTitles[$rightIndex];
+
+            $scores = [
+                'jaccard' => landing_research_jaccard_similarity($leftTitle['tokens'], $rightTitle['tokens']),
+                'cosine' => landing_research_cosine_similarity($leftTitle['frequencies'], $rightTitle['frequencies']),
+                'levenshtein' => landing_research_levenshtein_similarity($leftTitle['normalized_title'], $rightTitle['normalized_title']),
+                'dice' => landing_research_dice_similarity($leftTitle['tokens'], $rightTitle['tokens']),
+            ];
+            $scores['hybrid'] = landing_research_hybrid_similarity($scores);
+
+            foreach ($definitions as $key => $definition) {
+                $threshold = (float) ($definition['threshold'] ?? 0.0);
+
+                if (((float) ($scores[$key] ?? 0.0)) < $threshold) {
+                    continue;
+                }
+
+                $totalsByIndex[$leftIndex]['counts'][$key]++;
+                $totalsByIndex[$rightIndex]['counts'][$key]++;
+                $totalsByIndex[$leftIndex]['matched_score_sums'][$key] += (float) $scores[$key];
+                $totalsByIndex[$rightIndex]['matched_score_sums'][$key] += (float) $scores[$key];
+            }
+        }
+    }
+
+    $summaries = [];
+    $defaultSummary = landing_research_similarity_summary_empty($titlePoolCount);
+
+    foreach ($researchRows as $index => $researchRow) {
+        if (!isset($totalsByIndex[$index])) {
+            $summaries[$index] = $defaultSummary;
+            continue;
+        }
+
+        $summaries[$index] = landing_research_similarity_summary_from_totals($totalsByIndex[$index], $titlePoolCount);
+    }
+
+    return $summaries;
+}
+
 function landing_research_sdg_labels(?string $sdgs): array
 {
     $normalized = landing_research_normalize_text($sdgs);
@@ -244,19 +607,7 @@ ORDER BY COALESCE(m.submitted_at, m.updated_at) DESC, m.titleid DESC
 SQL
     )->fetchAll();
 
-    $programCounts = [];
-
-    foreach ($researchRows as $researchRow) {
-        $programKey = isset($researchRow['programid']) && (int) $researchRow['programid'] > 0
-            ? 'program-' . (int) $researchRow['programid']
-            : 'program-' . landing_research_program_label($researchRow);
-
-        if (!isset($programCounts[$programKey])) {
-            $programCounts[$programKey] = 0;
-        }
-
-        $programCounts[$programKey]++;
-    }
+    $titleSimilaritySummaries = landing_research_title_similarity_summaries($researchRows);
 
     foreach ($researchRows as $index => $researchRow) {
         $title = landing_research_normalize_text($researchRow['title'] ?? '');
@@ -275,11 +626,11 @@ SQL
         $dateLabel = landing_research_date_label($researchRow);
         $sdgLabels = landing_research_sdg_labels($researchRow['sdgs'] ?? '');
         $temporaryAbstract = landing_research_temporary_abstract($researchRow);
-        $programKey = isset($researchRow['programid']) && (int) $researchRow['programid'] > 0
-            ? 'program-' . (int) $researchRow['programid']
-            : 'program-' . $programLabel;
+        $views = landing_research_static_views($title, $year);
+        $similaritySummary = $titleSimilaritySummaries[$index] ?? landing_research_similarity_summary_empty(count($titleSimilaritySummaries));
 
         $researchCatalog[] = [
+            'titleid' => isset($researchRow['titleid']) ? (int) $researchRow['titleid'] : 0,
             'title' => $title,
             'authors' => $authors,
             'adviser' => $adviser,
@@ -291,9 +642,11 @@ SQL
             'type' => $researchType !== '' ? $researchType : 'Research record',
             'status' => $status !== '' ? $status : 'Status not set',
             'sdg_metric' => $sdgLabels !== [] ? implode(', ', $sdgLabels) : 'No SDG tags',
-            'match_count' => $programCounts[$programKey] ?? 1,
-            'related_label' => $programShortLabel !== '' ? $programShortLabel : 'This program',
+            'similarity_headline' => $similaritySummary['headline'],
+            'similarity_note' => $similaritySummary['note'],
+            'similarity_algorithms' => $similaritySummary['algorithms'],
             'summary' => $temporaryAbstract,
+            'views' => $views,
             'image' => app_link($researchImages[$index % count($researchImages)]),
             'search' => strtolower(
                 implode(
@@ -332,6 +685,11 @@ rsort($researchYears);
 
 $researchYearMin = $researchYears !== [] ? min($researchYears) : null;
 $researchYearMax = $researchYears !== [] ? max($researchYears) : null;
+$sidebarRecentYear = $researchYearMax ?? (int) date('Y');
+$sidebarPreviousYear = $sidebarRecentYear - 1;
+$sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
+    ? (string) $researchYearMin . ' to ' . (string) $researchYearMax
+    : 'Range unavailable';
 ?>
 <!DOCTYPE html>
 <html
@@ -350,7 +708,7 @@ $researchYearMax = $researchYears !== [] ? max($researchYears) : null;
     />
     <title>Oracle | Research Landing</title>
     <meta name="description" content="Oracle research landing page with Google access and catalog preview." />
-    <link rel="icon" type="image/x-icon" href="<?= e(app_link('assets/img/favicon/favicon.ico')); ?>" />
+    <link rel="icon" type="image/x-icon" href="<?= e(app_link('assets/img/favicon/favicon.png')); ?>" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -795,10 +1153,65 @@ $researchYearMax = $researchYears !== [] ? max($researchYears) : null;
       }
 
       .research-match {
+        display: grid;
+        gap: 0.7rem;
+        padding: 1rem 1.05rem;
+        border: 1px solid rgba(134, 176, 118, 0.24);
+        border-radius: 1rem;
+        background: linear-gradient(135deg, rgba(240, 253, 244, 0.92), rgba(255, 255, 255, 0.96));
+      }
+
+      .research-match-copy,
+      .research-match-note {
         margin: 0;
-        color: #5b6952;
-        font-size: 0.98rem;
+      }
+
+      .research-match-copy {
+        color: #166534;
+        font-size: 0.97rem;
+        font-weight: 700;
+        line-height: 1.5;
+      }
+
+      .research-match-note {
+        color: #4b5563;
+        font-size: 0.84rem;
+        line-height: 1.55;
+      }
+
+      .research-match-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+      }
+
+      .similarity-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.45rem 0.72rem;
+        border: 1px solid rgba(187, 247, 208, 0.9);
+        border-radius: 999px;
+        background: #ffffff;
+        color: #166534;
+        font-size: 0.8rem;
         font-weight: 600;
+        line-height: 1.2;
+      }
+
+      .similarity-pill strong {
+        color: #111827;
+        font-weight: 700;
+      }
+
+      .similarity-pill--primary {
+        border-color: #166534;
+        background: #166534;
+        color: #ffffff;
+      }
+
+      .similarity-pill--primary strong {
+        color: #ffffff;
       }
 
       .research-footer {
@@ -1086,6 +1499,83 @@ $researchYearMax = $researchYears !== [] ? max($researchYears) : null;
         font-weight: 700;
       }
 
+      .sidebar-copy {
+        margin: 0 0 1rem;
+        color: #4b5563;
+        font-size: 0.92rem;
+        line-height: 1.6;
+      }
+
+      .sidebar-group {
+        display: grid;
+        gap: 0.8rem;
+      }
+
+      .sidebar-option-list,
+      .sidebar-checklist {
+        display: grid;
+        gap: 0.6rem;
+      }
+
+      .sidebar-option {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.85rem;
+        padding: 0.78rem 0.88rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.9rem;
+        background: #f9fafb;
+        color: #374151;
+        font-size: 0.9rem;
+        font-weight: 600;
+        line-height: 1.45;
+      }
+
+      .sidebar-option--active {
+        border-color: #bbf7d0;
+        background: #f0fdf4;
+        color: #166534;
+      }
+
+      .sidebar-option-hint {
+        color: #6b7280;
+        font-size: 0.8rem;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .sidebar-check {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.7rem;
+        color: #374151;
+        font-size: 0.9rem;
+        font-weight: 600;
+        line-height: 1.5;
+      }
+
+      .sidebar-check i {
+        width: 1.45rem;
+        height: 1.45rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 1.45rem;
+        margin-top: 0.1rem;
+        border-radius: 0.45rem;
+        background: #f0fdf4;
+        color: #15803d;
+        font-size: 0.95rem;
+      }
+
+      .sidebar-note {
+        margin: 0;
+        color: #6b7280;
+        font-size: 0.84rem;
+        line-height: 1.55;
+      }
+
       .results-header {
         padding: 0 0 1rem;
         margin-bottom: 1rem;
@@ -1109,6 +1599,11 @@ $researchYearMax = $researchYears !== [] ? max($researchYears) : null;
       .research-result:hover {
         transform: none;
         box-shadow: none;
+      }
+
+      .research-result--focus {
+        border-color: #86efac;
+        box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
       }
 
       .result-shell {
@@ -1182,8 +1677,12 @@ $researchYearMax = $researchYears !== [] ? max($researchYears) : null;
       }
 
       .research-match {
-        font-size: 0.93rem;
-        color: #15803d;
+        display: grid;
+        gap: 0.7rem;
+        padding: 1rem 1.05rem;
+        border: 1px solid rgba(134, 176, 118, 0.24);
+        border-radius: 1rem;
+        background: linear-gradient(135deg, rgba(240, 253, 244, 0.92), rgba(255, 255, 255, 0.96));
       }
 
       .research-footer {
@@ -1221,6 +1720,402 @@ $researchYearMax = $researchYears !== [] ? max($researchYears) : null;
 
       .empty-state {
         padding: 2.5rem 2rem;
+      }
+
+      .ai-assistant-launcher {
+        position: fixed;
+        right: clamp(1rem, 2.8vw, 2rem);
+        bottom: clamp(1rem, 2.8vw, 2rem);
+        width: 5.5rem;
+        height: 5.5rem;
+        padding: 0;
+        border: 0;
+        border-radius: 999px;
+        background: transparent;
+        z-index: 1080;
+      }
+
+      .ai-assistant-launcher::before {
+        content: '';
+        position: absolute;
+        inset: -0.45rem;
+        border-radius: inherit;
+        background: radial-gradient(circle, rgba(16, 185, 129, 0.28), rgba(16, 185, 129, 0));
+        animation: ai-launcher-pulse 2.8s ease-in-out infinite;
+      }
+
+      .ai-launcher-shell {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        border-radius: inherit;
+        overflow: hidden;
+        isolation: isolate;
+        background: radial-gradient(circle at 30% 30%, #fef3c7 0%, #22c55e 42%, #0f766e 100%);
+        box-shadow: 0 22px 42px rgba(16, 185, 129, 0.22);
+      }
+
+      .ai-launcher-shell::after {
+        content: '';
+        position: absolute;
+        inset: 0.4rem;
+        border-radius: inherit;
+        border: 1px solid rgba(255, 255, 255, 0.42);
+      }
+
+      .ai-launcher-ring {
+        position: absolute;
+        inset: 0.55rem;
+        border-radius: inherit;
+        border: 1px solid rgba(255, 255, 255, 0.45);
+        animation: ai-launcher-spin 9s linear infinite;
+      }
+
+      .ai-launcher-ring--alt {
+        inset: 1rem;
+        border-style: dashed;
+        border-color: rgba(254, 243, 199, 0.76);
+        animation-direction: reverse;
+        animation-duration: 6s;
+      }
+
+      .ai-launcher-core {
+        position: relative;
+        z-index: 1;
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.08rem;
+        color: #ffffff;
+        text-shadow: 0 1px 8px rgba(0, 0, 0, 0.18);
+      }
+
+      .ai-launcher-label {
+        font-family: 'Space Grotesk', 'Public Sans', sans-serif;
+        font-size: 1.1rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .ai-launcher-copy {
+        font-size: 0.66rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .ai-search-modal .modal-dialog {
+        max-width: min(860px, calc(100vw - 1.75rem));
+      }
+
+      .ai-search-modal .modal-content {
+        border: 1px solid #d1fae5;
+        border-radius: 1.35rem;
+        overflow: hidden;
+        box-shadow: 0 28px 64px rgba(15, 23, 42, 0.16);
+      }
+
+      .ai-search-modal .modal-header {
+        align-items: flex-start;
+        padding: 1.35rem 1.5rem 1rem;
+        border-bottom: 1px solid #e5e7eb;
+        background: linear-gradient(135deg, rgba(240, 253, 244, 0.98), rgba(236, 253, 245, 0.96));
+      }
+
+      .ai-search-modal .modal-title {
+        margin: 0.8rem 0 0.35rem;
+        font-family: 'Space Grotesk', 'Public Sans', sans-serif;
+        font-size: 1.35rem;
+        letter-spacing: -0.03em;
+        color: #111827;
+      }
+
+      .ai-modal-copy {
+        margin: 0;
+        color: #4b5563;
+        font-size: 0.92rem;
+        line-height: 1.6;
+      }
+
+      .ai-search-modal .modal-body {
+        padding: 1.4rem 1.5rem 1.5rem;
+        background: #fcfffd;
+      }
+
+      .ai-search-form {
+        display: grid;
+        gap: 1rem;
+      }
+
+      .ai-search-form .form-label {
+        margin: 0;
+        color: #1f2937;
+        font-weight: 700;
+      }
+
+      .ai-search-prompt {
+        min-height: 7.5rem;
+        resize: vertical;
+        border: 1px solid #d1d5db;
+        border-radius: 1rem;
+        padding: 1rem 1.05rem;
+        color: #111827;
+        background: #ffffff;
+        box-shadow: none;
+      }
+
+      .ai-search-prompt:focus {
+        border-color: #10b981;
+        box-shadow: 0 0 0 0.2rem rgba(16, 185, 129, 0.12);
+      }
+
+      .ai-search-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+
+      .ai-search-hint {
+        flex: 1 1 18rem;
+        margin: 0;
+        color: #4b5563;
+        font-size: 0.88rem;
+        line-height: 1.6;
+      }
+
+      .ai-search-submit {
+        min-width: 12.5rem;
+        min-height: 3.2rem;
+        border-radius: 0.95rem;
+        border: 0;
+        background: linear-gradient(135deg, #059669, #16a34a);
+        color: #ffffff;
+        font-weight: 700;
+        box-shadow: 0 16px 28px rgba(5, 150, 105, 0.18);
+      }
+
+      .ai-search-submit:hover,
+      .ai-search-submit:focus {
+        color: #ffffff;
+        background: linear-gradient(135deg, #047857, #15803d);
+      }
+
+      .ai-search-submit:disabled {
+        opacity: 0.7;
+        cursor: wait;
+      }
+
+      .ai-search-status {
+        margin-top: 1rem;
+        padding: 0.95rem 1rem;
+        border-radius: 1rem;
+        border: 1px solid #d1fae5;
+        background: #f0fdf4;
+      }
+
+      .ai-search-status--danger {
+        border-color: #fecaca;
+        background: #fef2f2;
+      }
+
+      .ai-search-status--neutral {
+        border-color: #d1d5db;
+        background: #f9fafb;
+      }
+
+      .ai-search-status--success {
+        border-color: #a7f3d0;
+        background: #ecfdf5;
+      }
+
+      .ai-search-status-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.9rem;
+        flex-wrap: wrap;
+      }
+
+      .ai-search-status-copy,
+      .ai-search-status-note {
+        margin: 0;
+      }
+
+      .ai-search-status-copy {
+        color: #111827;
+        font-size: 0.95rem;
+        font-weight: 600;
+        line-height: 1.55;
+      }
+
+      .ai-search-status-note {
+        margin-top: 0.6rem;
+        color: #4b5563;
+        font-size: 0.84rem;
+        line-height: 1.5;
+      }
+
+      .ai-search-status-badges {
+        display: flex;
+        gap: 0.45rem;
+        flex-wrap: wrap;
+      }
+
+      .ai-status-badge,
+      .ai-search-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.35rem 0.72rem;
+        border-radius: 999px;
+        background: #ffffff;
+        border: 1px solid #d1d5db;
+        color: #374151;
+        font-size: 0.76rem;
+        font-weight: 700;
+      }
+
+      .ai-search-results {
+        display: grid;
+        gap: 0.9rem;
+        margin-top: 1rem;
+      }
+
+      .ai-search-empty {
+        padding: 1.3rem 1.1rem;
+        border: 1px dashed #d1d5db;
+        border-radius: 1rem;
+        background: #ffffff;
+        color: #4b5563;
+        font-size: 0.92rem;
+        text-align: center;
+      }
+
+      .ai-search-card {
+        display: grid;
+        gap: 0.85rem;
+        padding: 1rem 1.05rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 1rem;
+        background: #ffffff;
+      }
+
+      .ai-search-card-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+
+      .ai-search-card-kicker {
+        margin: 0 0 0.35rem;
+        color: #16a34a;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .ai-search-card-title {
+        margin: 0;
+        font-family: 'Space Grotesk', 'Public Sans', sans-serif;
+        font-size: 1.12rem;
+        line-height: 1.35;
+        color: #111827;
+      }
+
+      .ai-search-card-score {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 5.7rem;
+        padding: 0.5rem 0.85rem;
+        border-radius: 999px;
+        background: #ecfdf5;
+        color: #047857;
+        font-size: 0.86rem;
+        font-weight: 800;
+      }
+
+      .ai-search-card-meta,
+      .ai-search-card-chips {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
+
+      .ai-search-card-meta span {
+        color: #4b5563;
+        font-size: 0.84rem;
+        line-height: 1.5;
+      }
+
+      .ai-search-card-reason,
+      .ai-search-card-copy {
+        margin: 0;
+        color: #374151;
+        line-height: 1.65;
+      }
+
+      .ai-search-card-reason {
+        font-size: 0.88rem;
+        font-weight: 700;
+      }
+
+      .ai-search-card-copy {
+        font-size: 0.9rem;
+      }
+
+      .ai-search-card-actions {
+        display: flex;
+        justify-content: flex-end;
+      }
+
+      .ai-locate-btn {
+        min-height: 2.85rem;
+        border-radius: 0.85rem;
+        border: 1px solid #16a34a;
+        background: #f0fdf4;
+        color: #166534;
+        font-weight: 700;
+      }
+
+      .ai-locate-btn:hover,
+      .ai-locate-btn:focus {
+        color: #14532d;
+        background: #dcfce7;
+        border-color: #15803d;
+      }
+
+      @keyframes ai-launcher-pulse {
+        0%,
+        100% {
+          transform: scale(0.92);
+          opacity: 0.62;
+        }
+
+        50% {
+          transform: scale(1.08);
+          opacity: 1;
+        }
+      }
+
+      @keyframes ai-launcher-spin {
+        0% {
+          transform: rotate(0deg);
+        }
+
+        100% {
+          transform: rotate(360deg);
+        }
       }
 
       .landing-footer {
@@ -1312,6 +2207,29 @@ $researchYearMax = $researchYears !== [] ? max($researchYears) : null;
         .research-title {
           font-size: 1.35rem;
         }
+
+        .ai-assistant-launcher {
+          width: 4.8rem;
+          height: 4.8rem;
+          bottom: 1rem;
+          right: 1rem;
+        }
+
+        .ai-search-modal .modal-header,
+        .ai-search-modal .modal-body {
+          padding-left: 1rem;
+          padding-right: 1rem;
+        }
+
+        .ai-search-card-actions,
+        .ai-search-toolbar {
+          justify-content: stretch;
+        }
+
+        .ai-search-submit,
+        .ai-locate-btn {
+          width: 100%;
+        }
       }
     </style>
   </head>
@@ -1387,23 +2305,75 @@ $researchYearMax = $researchYears !== [] ? max($researchYears) : null;
         <div class="row g-4">
           <div class="col-xl-3 col-lg-4">
             <aside class="panel-card sidebar-panel">
-              <h2 class="sidebar-heading">Research overview</h2>
+              <h2 class="sidebar-heading">Explore this collection</h2>
+              <p class="sidebar-copy">Scholar-inspired browsing cues for the Oracle research catalog while keeping the current portal design intact.</p>
 
               <div class="insight-list">
-                <div class="insight-item">
-                  <div class="insight-label">Loaded entries</div>
-                  <div class="insight-value"><?= e((string) count($researchCatalog)); ?> research records</div>
-                </div>
-                <div class="insight-item">
-                  <div class="insight-label">Access flow</div>
-                  <div class="insight-value">Google authentication remains the active sign-in method</div>
-                </div>
-                <div class="insight-item">
-                  <div class="insight-label">Year span</div>
-                  <div class="insight-value">
-                    <?= $researchYearMin !== null && $researchYearMax !== null ? e((string) $researchYearMin . ' to ' . (string) $researchYearMax) : 'Not available'; ?>
+                <section class="insight-item sidebar-group" aria-label="Publication window">
+                  <div class="insight-label">Publication window</div>
+                  <div class="sidebar-option-list">
+                    <div class="sidebar-option sidebar-option--active">
+                      <span>Any time</span>
+                      <span class="sidebar-option-hint">Default</span>
+                    </div>
+                    <div class="sidebar-option">
+                      <span>Since <?= e((string) $sidebarRecentYear); ?></span>
+                    </div>
+                    <div class="sidebar-option">
+                      <span>Since <?= e((string) $sidebarPreviousYear); ?></span>
+                    </div>
+                    <div class="sidebar-option">
+                      <span>Custom range</span>
+                      <span class="sidebar-option-hint"><?= e($sidebarYearRangeLabel); ?></span>
+                    </div>
                   </div>
-                </div>
+                </section>
+
+                <section class="insight-item sidebar-group" aria-label="Sort results">
+                  <div class="insight-label">Sort results</div>
+                  <div class="sidebar-option-list">
+                    <div class="sidebar-option sidebar-option--active">
+                      <span>Sort by relevance</span>
+                    </div>
+                    <div class="sidebar-option">
+                      <span>Sort by latest upload</span>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="insight-item sidebar-group" aria-label="Research focus">
+                  <div class="insight-label">Research focus</div>
+                  <div class="sidebar-option-list">
+                    <div class="sidebar-option sidebar-option--active">
+                      <span>All research records</span>
+                    </div>
+                    <div class="sidebar-option">
+                      <span>Adviser-reviewed studies</span>
+                    </div>
+                    <div class="sidebar-option">
+                      <span>SDG-tagged projects</span>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="insight-item sidebar-group" aria-label="Catalog tools">
+                  <div class="insight-label">Catalog tools</div>
+                  <div class="sidebar-checklist">
+                    <div class="sidebar-check">
+                      <i class="bx bx-checkbox-checked"></i>
+                      <span>Include citation-ready records in the browsing view</span>
+                    </div>
+                    <div class="sidebar-check">
+                      <i class="bx bx-checkbox-checked"></i>
+                      <span>Keep adviser-linked entries visible in the current result set</span>
+                    </div>
+                    <div class="sidebar-check">
+                      <i class="bx bx-bell"></i>
+                      <span>Create alerts for newly uploaded manuscripts and research updates</span>
+                    </div>
+                  </div>
+                  <p class="sidebar-note"><?= e((string) count($researchCatalog)); ?> indexed records are currently available across <?= e($sidebarYearRangeLabel); ?>.</p>
+                </section>
               </div>
             </aside>
           </div>
@@ -1420,9 +2390,11 @@ $researchYearMax = $researchYears !== [] ? max($researchYears) : null;
               <div class="research-list" id="research-grid">
 <?php foreach ($researchCatalog as $researchIndex => $research): ?>
                 <article
+                  id="research-entry-<?= e((string) $research['titleid']); ?>"
                   class="research-result research-entry<?= $researchIndex >= $initialResearchBatchSize ? ' d-none' : ''; ?>"
                   data-search="<?= e($research['search']); ?>"
                   data-year="<?= e((string) $research['year']); ?>"
+                  data-titleid="<?= e((string) $research['titleid']); ?>"
                 >
                   <div class="result-shell">
                     <div class="result-visual">
@@ -1452,6 +2424,10 @@ $researchYearMax = $researchYears !== [] ? max($researchYears) : null;
                           <span class="metric-icon"><i class="bx bx-book-content"></i></span>
                           <strong><?= e($research['type']); ?></strong>
                         </span>
+                        <span class="metric-line">
+                          <span class="metric-icon"><i class="bx bx-show"></i></span>
+                          <strong><?= e(number_format((int) $research['views'])); ?></strong> views
+                        </span>
                         <span class="metric-pill metric-pill--green">
                           <i class="bx bx-target-lock"></i> <?= e($research['sdg_metric']); ?>
                         </span>
@@ -1459,9 +2435,18 @@ $researchYearMax = $researchYears !== [] ? max($researchYears) : null;
 
                       <p class="research-summary"><?= e($research['summary']); ?></p>
 
-                      <p class="research-match">
-                        <?= e($research['related_label']); ?> has <?= e((string) $research['match_count']); ?> related studies in this live collection.
-                      </p>
+                      <div class="research-match">
+                        <p class="research-match-copy"><?= e($research['similarity_headline']); ?></p>
+                        <p class="research-match-note"><?= e($research['similarity_note']); ?></p>
+                        <div class="research-match-list">
+<?php foreach ($research['similarity_algorithms'] as $algorithm): ?>
+                          <span class="similarity-pill<?= !empty($algorithm['featured']) ? ' similarity-pill--primary' : ''; ?>">
+                            <strong><?= e($algorithm['label']); ?></strong>
+                            <span><?= e($algorithm['detail']); ?></span>
+                          </span>
+<?php endforeach; ?>
+                        </div>
+                      </div>
 
                       <div class="research-footer">
                         <div class="research-affiliation">
@@ -1500,6 +2485,58 @@ $researchYearMax = $researchYears !== [] ? max($researchYears) : null;
         <p>ORACLE 2026</p>
       </div>
     </footer>
+
+    <button
+      type="button"
+      class="ai-assistant-launcher"
+      data-bs-toggle="modal"
+      data-bs-target="#aiResearchModal"
+      aria-label="Open AI research search"
+    >
+      <span class="ai-launcher-shell" aria-hidden="true">
+        <span class="ai-launcher-ring"></span>
+        <span class="ai-launcher-ring ai-launcher-ring--alt"></span>
+        <span class="ai-launcher-core">
+          <span class="ai-launcher-label">AI</span>
+          <span class="ai-launcher-copy">Match</span>
+        </span>
+      </span>
+    </button>
+
+    <div class="modal fade ai-search-modal" id="aiResearchModal" tabindex="-1" aria-labelledby="aiResearchModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <div>
+              <span class="hero-badge"><i class="bx bx-bot"></i> AI Research Match</span>
+              <h5 class="modal-title" id="aiResearchModalLabel">Find the closest related research</h5>
+              <p class="ai-modal-copy">Describe a topic, problem, or title idea and the assistant will search <code>tblresearches</code> for the closest matching studies.</p>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <form id="ai-research-form" class="ai-search-form">
+              <label for="ai-research-query" class="form-label">What research are you looking for?</label>
+              <textarea
+                id="ai-research-query"
+                class="form-control ai-search-prompt"
+                placeholder="Example: mobile appointment system for healthcare services"
+              ></textarea>
+              <div class="ai-search-toolbar">
+                <p class="ai-search-hint">Gemini reranks the closest catalog candidates when a key is available. If not, the portal still returns the best local similarity matches from the current research table.</p>
+                <button type="submit" class="btn ai-search-submit" id="ai-search-submit">
+                  <span class="ai-submit-default">Search related research</span>
+                  <span class="ai-submit-loading d-none">Searching...</span>
+                </button>
+              </div>
+            </form>
+
+            <div id="ai-search-status" class="ai-search-status ai-search-status--neutral d-none" aria-live="polite"></div>
+            <div id="ai-search-results" class="ai-search-results" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <script src="<?= e(app_link('assets/vendor/libs/jquery/jquery.js')); ?>"></script>
     <script src="<?= e(app_link('assets/vendor/libs/popper/popper.js')); ?>"></script>
@@ -1564,6 +2601,45 @@ $researchYearMax = $researchYears !== [] ? max($researchYears) : null;
           applyFilters();
         };
 
+        window.oracleLandingCatalog = {
+          focusResearch(titleId, titleQuery) {
+            const normalizedTitleId = String(titleId || '').trim();
+
+            if (normalizedTitleId === '') {
+              return false;
+            }
+
+            if (searchInput) {
+              searchInput.value = String(titleQuery || '').trim();
+            }
+
+            if (yearInput) {
+              yearInput.value = '';
+            }
+
+            visibleLimit = researchEntries.length;
+            applyFilters();
+
+            const targetEntry = document.querySelector('.research-entry[data-titleid="' + normalizedTitleId + '"]');
+
+            if (!targetEntry || targetEntry.classList.contains('d-none')) {
+              return false;
+            }
+
+            targetEntry.scrollIntoView({
+              behavior: 'smooth',
+              block: 'center',
+            });
+            targetEntry.classList.add('research-result--focus');
+
+            window.setTimeout(() => {
+              targetEntry.classList.remove('research-result--focus');
+            }, 2200);
+
+            return true;
+          },
+        };
+
         searchInput.addEventListener('input', resetAndApplyFilters);
         yearInput.addEventListener('change', resetAndApplyFilters);
 
@@ -1593,6 +2669,199 @@ $researchYearMax = $researchYears !== [] ? max($researchYears) : null;
         }
 
         resetAndApplyFilters();
+      })();
+
+      (function () {
+        const modalElement = document.getElementById('aiResearchModal');
+        const form = document.getElementById('ai-research-form');
+        const queryInput = document.getElementById('ai-research-query');
+        const statusContainer = document.getElementById('ai-search-status');
+        const resultsContainer = document.getElementById('ai-search-results');
+        const submitButton = document.getElementById('ai-search-submit');
+        const defaultText = submitButton ? submitButton.querySelector('.ai-submit-default') : null;
+        const loadingText = submitButton ? submitButton.querySelector('.ai-submit-loading') : null;
+        const landingSearchInput = document.getElementById('research-search');
+        const aiSearchEndpoint = <?= json_encode(app_link('research_ai_search.php')); ?>;
+
+        if (!modalElement || !form || !queryInput || !statusContainer || !resultsContainer || !submitButton || !defaultText || !loadingText) {
+          return;
+        }
+
+        const escapeHtml = value => {
+          const node = document.createElement('div');
+          node.textContent = value == null ? '' : String(value);
+          return node.innerHTML;
+        };
+
+        const setSubmitting = isSubmitting => {
+          submitButton.disabled = isSubmitting;
+          defaultText.classList.toggle('d-none', isSubmitting);
+          loadingText.classList.toggle('d-none', !isSubmitting);
+        };
+
+        const renderPlaceholder = message => {
+          resultsContainer.innerHTML = '<div class="ai-search-empty">' + escapeHtml(message) + '</div>';
+        };
+
+        const renderStatus = (message, tone, badges, note) => {
+          const badgeMarkup = (badges || []).map(badge => {
+            return '<span class="ai-status-badge">' + escapeHtml(badge) + '</span>';
+          }).join('');
+
+          statusContainer.className = 'ai-search-status ai-search-status--' + (tone || 'neutral');
+          statusContainer.classList.remove('d-none');
+          statusContainer.innerHTML =
+            '<div class="ai-search-status-row">'
+            + '<p class="ai-search-status-copy">' + escapeHtml(message || '') + '</p>'
+            + '<div class="ai-search-status-badges">' + badgeMarkup + '</div>'
+            + '</div>'
+            + ((note || '') !== ''
+              ? '<p class="ai-search-status-note">' + escapeHtml(note) + '</p>'
+              : '');
+        };
+
+        const renderMatches = payload => {
+          const matches = Array.isArray(payload && payload.matches) ? payload.matches : [];
+          const badges = [
+            payload && payload.used_gemini ? 'Gemini reranked' : 'Local similarity',
+            matches.length + ' match' + (matches.length === 1 ? '' : 'es'),
+          ];
+
+          renderStatus(
+            payload && payload.summary ? payload.summary : 'Closest research matches are ready.',
+            payload && payload.used_gemini ? 'success' : 'neutral',
+            badges,
+            payload && payload.notice ? payload.notice : ''
+          );
+
+          if (matches.length === 0) {
+            renderPlaceholder('No close research match was found for that prompt.');
+            return;
+          }
+
+          resultsContainer.innerHTML = matches.map(match => {
+            const keywords = Array.isArray(match.keywords) ? match.keywords : [];
+            const chips = keywords.map(keyword => {
+              return '<span class="ai-search-chip">' + escapeHtml(keyword) + '</span>';
+            }).join('');
+            const sourceChip = '<span class="ai-search-chip">' + escapeHtml(match.rank_source === 'gemini' ? 'AI-ranked' : 'Similarity-ranked') + '</span>';
+
+            return ''
+              + '<article class="ai-search-card">'
+              + '  <div class="ai-search-card-top">'
+              + '    <div>'
+              + '      <p class="ai-search-card-kicker">' + escapeHtml((match.research_type || 'Research record') + ' - ' + (match.year || '')) + '</p>'
+              + '      <h6 class="ai-search-card-title">' + escapeHtml(match.title || '') + '</h6>'
+              + '    </div>'
+              + '    <span class="ai-search-card-score">' + escapeHtml(match.score_label || '') + '</span>'
+              + '  </div>'
+              + '  <div class="ai-search-card-meta">'
+              + '    <span><strong>Program:</strong> ' + escapeHtml(match.program || 'Program not set') + '</span>'
+              + '    <span><strong>Date:</strong> ' + escapeHtml(match.date_label || 'Date unavailable') + '</span>'
+              + '  </div>'
+              + '  <div class="ai-search-card-meta">'
+              + '    <span><strong>Authors:</strong> ' + escapeHtml(match.authors || 'Author information unavailable') + '</span>'
+              + '    <span><strong>Adviser:</strong> ' + escapeHtml(match.adviser || 'Adviser not assigned') + '</span>'
+              + '  </div>'
+              + '  <p class="ai-search-card-reason">' + escapeHtml(match.match_reason || '') + '</p>'
+              + '  <p class="ai-search-card-copy">' + escapeHtml(match.summary || '') + '</p>'
+              + '  <div class="ai-search-card-chips">' + sourceChip + chips + '</div>'
+              + '  <div class="ai-search-card-actions">'
+              + '    <button type="button" class="btn ai-locate-btn" data-ai-locate="1" data-titleid="' + escapeHtml(match.titleid || '') + '" data-title="' + escapeHtml(match.title || '') + '">Locate on page</button>'
+              + '  </div>'
+              + '</article>';
+          }).join('');
+        };
+
+        modalElement.addEventListener('shown.bs.modal', () => {
+          if (queryInput.value.trim() === '' && landingSearchInput && landingSearchInput.value.trim() !== '') {
+            queryInput.value = landingSearchInput.value.trim();
+            queryInput.select();
+            return;
+          }
+
+          queryInput.focus();
+        });
+
+        resultsContainer.addEventListener('click', event => {
+          const locateButton = event.target.closest('[data-ai-locate]');
+
+          if (!locateButton) {
+            return;
+          }
+
+          const titleId = locateButton.getAttribute('data-titleid') || '';
+          const title = locateButton.getAttribute('data-title') || '';
+
+          if (!window.oracleLandingCatalog || typeof window.oracleLandingCatalog.focusResearch !== 'function') {
+            renderStatus('The matching research card could not be located from the landing page.', 'danger', ['Locator unavailable'], '');
+            return;
+          }
+
+          const focused = window.oracleLandingCatalog.focusResearch(titleId, title);
+
+          if (!focused) {
+            renderStatus('The matching research card could not be located from the landing page.', 'danger', ['Locator unavailable'], '');
+            return;
+          }
+
+          if (window.bootstrap && window.bootstrap.Modal) {
+            window.bootstrap.Modal.getOrCreateInstance(modalElement).hide();
+          }
+        });
+
+        form.addEventListener('submit', async event => {
+          event.preventDefault();
+
+          const query = queryInput.value.trim();
+
+          if (query === '') {
+            renderStatus('Enter a research topic, title idea, or problem statement first.', 'danger', ['Input needed'], '');
+            renderPlaceholder('Describe a topic and the assistant will search the catalog for the closest match.');
+            queryInput.focus();
+            return;
+          }
+
+          setSubmitting(true);
+          renderStatus('Searching the research catalog for the closest related studies...', 'neutral', ['Searching'], '');
+          renderPlaceholder('Checking titles, summaries, advisers, and program context...');
+
+          try {
+            const response = await fetch(aiSearchEndpoint, {
+              method: 'POST',
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+              },
+              body: new URLSearchParams({
+                query,
+                limit: '5',
+              }),
+            });
+
+            const responseText = await response.text();
+            let payload = null;
+
+            try {
+              payload = JSON.parse(responseText);
+            } catch (error) {
+              payload = null;
+            }
+
+            if (!response.ok || !payload) {
+              throw new Error(payload && payload.message ? payload.message : 'Unable to search the research catalog right now.');
+            }
+
+            renderMatches(payload);
+          } catch (error) {
+            renderStatus(error && error.message ? error.message : 'Unable to search the research catalog right now.', 'danger', ['Search failed'], '');
+            renderPlaceholder('Try another prompt or check the Gemini configuration in the environment file.');
+          } finally {
+            setSubmitting(false);
+          }
+        });
+
+        renderPlaceholder('Describe a topic and the assistant will search the catalog for the closest related research.');
       })();
     </script>
   </body>
