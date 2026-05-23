@@ -36,6 +36,7 @@ try {
 
     $profile = GoogleOAuth::fetchUserInfo($accessToken);
     $email = GoogleOAuth::verifiedEmail($profile);
+    Database::ensureAccountCoordinatorColumns();
     $account = Database::findAccountByEmail($email);
 
     if ($account === null) {
@@ -55,7 +56,7 @@ try {
         'picture' => isset($profile['picture']) ? (string) $profile['picture'] : '',
     ]);
 
-    redirect(app_link('administrator/'));
+    redirect(Auth::defaultWorkspaceUrl($account));
 } catch (PDOException $exception) {
     set_flash('auth_error', 'Database query failed. Verify your tblaccount structure and database settings.');
     redirect(app_link());

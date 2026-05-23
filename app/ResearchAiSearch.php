@@ -611,6 +611,8 @@ SQL
             return 0.0;
         }
 
+        $leftText = substr($leftText, 0, 255);
+        $rightText = substr($rightText, 0, 255);
         $maxLength = max(strlen($leftText), strlen($rightText));
 
         if ($maxLength === 0) {

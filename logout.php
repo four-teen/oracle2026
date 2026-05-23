@@ -16,6 +16,5 @@ if (!verify_csrf_token($token)) {
 }
 
 Auth::logout();
-set_flash('auth_success', 'You have been signed out.');
 
 redirect(app_link());

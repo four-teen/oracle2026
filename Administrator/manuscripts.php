@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/app/bootstrap.php';
 
+Auth::requireAdmin();
+
 function administrator_manuscript_url(array $parameters = []): string
 {
     $query = http_build_query($parameters, '', '&');

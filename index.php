@@ -5,27 +5,32 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 if (Auth::check()) {
-    redirect(app_link('administrator/'));
+    Auth::requireLogin();
+    $workspaceUrl = Auth::defaultWorkspaceUrl();
+
+    if ($workspaceUrl !== app_link()) {
+        redirect($workspaceUrl);
+    }
 }
 
 $authError = get_flash('auth_error');
 $authSuccess = get_flash('auth_success');
 $configIssues = configuration_issues();
 
-$researchImages = [
-    'assets/img/elements/1.jpg',
-    'assets/img/elements/2.jpg',
-    'assets/img/elements/3.jpg',
-    'assets/img/elements/4.jpg',
-    'assets/img/elements/5.jpg',
-    'assets/img/elements/7.jpg',
-    'assets/img/elements/11.jpg',
-    'assets/img/elements/12.jpg',
-    'assets/img/elements/13.jpg',
-    'assets/img/elements/17.jpg',
-    'assets/img/elements/18.jpg',
-    'assets/img/elements/19.jpg',
-    'assets/img/elements/20.jpg',
+$researchAvatarPalettes = [
+    ['accent' => '#facc15', 'soft' => '#fef3c7', 'icon' => 'bx-book-open'],
+    ['accent' => '#38bdf8', 'soft' => '#e0f2fe', 'icon' => 'bx-book-reader'],
+    ['accent' => '#a78bfa', 'soft' => '#ede9fe', 'icon' => 'bx-book-content'],
+    ['accent' => '#fb7185', 'soft' => '#ffe4e6', 'icon' => 'bx-file-find'],
+    ['accent' => '#34d399', 'soft' => '#d1fae5', 'icon' => 'bx-clipboard'],
+    ['accent' => '#f97316', 'soft' => '#ffedd5', 'icon' => 'bx-bulb'],
+    ['accent' => '#60a5fa', 'soft' => '#dbeafe', 'icon' => 'bx-data'],
+    ['accent' => '#f59e0b', 'soft' => '#fef3c7', 'icon' => 'bx-line-chart'],
+    ['accent' => '#2dd4bf', 'soft' => '#ccfbf1', 'icon' => 'bx-analyse'],
+    ['accent' => '#c084fc', 'soft' => '#f3e8ff', 'icon' => 'bx-brain'],
+    ['accent' => '#22c55e', 'soft' => '#dcfce7', 'icon' => 'bx-test-tube'],
+    ['accent' => '#ef4444', 'soft' => '#fee2e2', 'icon' => 'bx-folder-open'],
+    ['accent' => '#64748b', 'soft' => '#f1f5f9', 'icon' => 'bx-collection'],
 ];
 
 $initialResearchBatchSize = 12;
@@ -35,15 +40,6 @@ function landing_research_normalize_text(?string $value): string
     $normalized = preg_replace('/\s+/', ' ', trim((string) $value));
 
     return is_string($normalized) ? $normalized : '';
-}
-
-function landing_research_lower(string $value): string
-{
-    if (function_exists('mb_strtolower')) {
-        return mb_strtolower($value, 'UTF-8');
-    }
-
-    return strtolower($value);
 }
 
 function landing_research_trim(string $value, int $limit = 220): string
@@ -96,19 +92,6 @@ function landing_research_program_label(array $research): string
     }
 
     return $label !== '' ? $label : 'Program not set';
-}
-
-function landing_research_program_short_label(array $research): string
-{
-    $courseCode = landing_research_normalize_text($research['coursecode'] ?? '');
-
-    if ($courseCode !== '') {
-        return $courseCode;
-    }
-
-    $courseDescription = landing_research_normalize_text($research['coursedescription'] ?? '');
-
-    return $courseDescription !== '' ? $courseDescription : 'This program';
 }
 
 function landing_research_adviser_label(array $research): string
@@ -166,353 +149,6 @@ function landing_research_static_views(string $title, int $year): int
     return 120 + ($seed % 1380);
 }
 
-function landing_research_similarity_normalized_title(string $title): string
-{
-    $normalized = landing_research_lower(landing_research_normalize_text($title));
-    $normalized = preg_replace('/[^\p{L}\p{N}\s]+/u', ' ', $normalized);
-
-    if (!is_string($normalized)) {
-        return '';
-    }
-
-    $normalized = preg_replace('/\s+/u', ' ', trim($normalized));
-
-    return is_string($normalized) ? $normalized : '';
-}
-
-function landing_research_similarity_tokens(string $title): array
-{
-    static $stopWords = [
-        'a' => true,
-        'an' => true,
-        'and' => true,
-        'at' => true,
-        'based' => true,
-        'by' => true,
-        'for' => true,
-        'from' => true,
-        'in' => true,
-        'of' => true,
-        'on' => true,
-        'or' => true,
-        'the' => true,
-        'to' => true,
-        'using' => true,
-        'with' => true,
-    ];
-
-    $normalized = landing_research_similarity_normalized_title($title);
-
-    if ($normalized === '') {
-        return [];
-    }
-
-    $tokens = preg_split('/\s+/u', $normalized) ?: [];
-    $filtered = [];
-
-    foreach ($tokens as $token) {
-        $token = landing_research_normalize_text($token);
-
-        if ($token === '' || strlen($token) <= 1 || isset($stopWords[$token])) {
-            continue;
-        }
-
-        $filtered[] = $token;
-    }
-
-    return $filtered;
-}
-
-function landing_research_similarity_frequencies(array $tokens): array
-{
-    $frequencies = [];
-
-    foreach ($tokens as $token) {
-        if (!isset($frequencies[$token])) {
-            $frequencies[$token] = 0;
-        }
-
-        $frequencies[$token]++;
-    }
-
-    return $frequencies;
-}
-
-function landing_research_jaccard_similarity(array $tokensA, array $tokensB): float
-{
-    $setA = array_fill_keys(array_values(array_unique($tokensA)), true);
-    $setB = array_fill_keys(array_values(array_unique($tokensB)), true);
-    $union = array_unique(array_merge(array_keys($setA), array_keys($setB)));
-    $unionCount = count($union);
-
-    if ($unionCount === 0) {
-        return 0.0;
-    }
-
-    $intersectionCount = count(array_intersect(array_keys($setA), array_keys($setB)));
-
-    return $intersectionCount / $unionCount;
-}
-
-function landing_research_dice_similarity(array $tokensA, array $tokensB): float
-{
-    $setA = array_values(array_unique($tokensA));
-    $setB = array_values(array_unique($tokensB));
-    $setTotal = count($setA) + count($setB);
-
-    if ($setTotal === 0) {
-        return 0.0;
-    }
-
-    $intersectionCount = count(array_intersect($setA, $setB));
-
-    return (2 * $intersectionCount) / $setTotal;
-}
-
-function landing_research_cosine_similarity(array $frequenciesA, array $frequenciesB): float
-{
-    if ($frequenciesA === [] || $frequenciesB === []) {
-        return 0.0;
-    }
-
-    $dotProduct = 0.0;
-    $magnitudeA = 0.0;
-    $magnitudeB = 0.0;
-
-    foreach ($frequenciesA as $token => $count) {
-        $magnitudeA += $count * $count;
-
-        if (isset($frequenciesB[$token])) {
-            $dotProduct += $count * $frequenciesB[$token];
-        }
-    }
-
-    foreach ($frequenciesB as $count) {
-        $magnitudeB += $count * $count;
-    }
-
-    $denominator = sqrt($magnitudeA) * sqrt($magnitudeB);
-
-    if ($denominator <= 0.0) {
-        return 0.0;
-    }
-
-    return $dotProduct / $denominator;
-}
-
-function landing_research_levenshtein_similarity(string $titleA, string $titleB): float
-{
-    if ($titleA === '' || $titleB === '') {
-        return 0.0;
-    }
-
-    $maxLength = max(strlen($titleA), strlen($titleB));
-
-    if ($maxLength === 0) {
-        return 0.0;
-    }
-
-    $distance = levenshtein($titleA, $titleB);
-    $score = 1 - (min($distance, $maxLength) / $maxLength);
-
-    return max(0.0, min(1.0, $score));
-}
-
-function landing_research_hybrid_similarity(array $scores): float
-{
-    $weights = [
-        'jaccard' => 0.20,
-        'cosine' => 0.30,
-        'levenshtein' => 0.20,
-        'dice' => 0.30,
-    ];
-
-    $hybridScore = 0.0;
-
-    foreach ($weights as $key => $weight) {
-        $hybridScore += ((float) ($scores[$key] ?? 0.0)) * $weight;
-    }
-
-    return max(0.0, min(1.0, $hybridScore));
-}
-
-function landing_research_similarity_definitions(): array
-{
-    return [
-        'hybrid' => [
-            'label' => 'Hybrid',
-            'threshold' => 0.56,
-            'featured' => true,
-        ],
-        'jaccard' => [
-            'label' => 'Jaccard',
-            'threshold' => 0.34,
-            'featured' => false,
-        ],
-        'cosine' => [
-            'label' => 'Cosine',
-            'threshold' => 0.50,
-            'featured' => false,
-        ],
-        'levenshtein' => [
-            'label' => 'Levenshtein',
-            'threshold' => 0.68,
-            'featured' => false,
-        ],
-        'dice' => [
-            'label' => 'Sorensen-Dice',
-            'threshold' => 0.44,
-            'featured' => false,
-        ],
-    ];
-}
-
-function landing_research_similarity_percentage_label(float $score): string
-{
-    $score = max(0.0, min(1.0, $score));
-
-    return (string) round($score * 100) . '%';
-}
-
-function landing_research_similarity_summary_from_totals(array $totals, int $titlePoolCount): array
-{
-    $definitions = landing_research_similarity_definitions();
-    $algorithmCards = [];
-
-    foreach ($definitions as $key => $definition) {
-        $count = (int) ($totals['counts'][$key] ?? 0);
-        $averageScore = $count > 0
-            ? ((float) ($totals['matched_score_sums'][$key] ?? 0.0)) / $count
-            : 0.0;
-        $titleLabel = $count === 1 ? '1 title' : (string) $count . ' titles';
-
-        $algorithmCards[] = [
-            'label' => $definition['label'],
-            'detail' => $titleLabel . ' | ' . landing_research_similarity_percentage_label($averageScore) . ' avg',
-            'featured' => (bool) ($definition['featured'] ?? false),
-        ];
-    }
-
-    if ($titlePoolCount <= 1) {
-        return [
-            'headline' => 'Only one indexed title is available for similarity comparison right now.',
-            'note' => 'Similarity counts will appear once more titles are added to the live collection.',
-            'algorithms' => $algorithmCards,
-        ];
-    }
-
-    $hybridCount = (int) ($totals['counts']['hybrid'] ?? 0);
-    $hybridAverage = $hybridCount > 0
-        ? ((float) ($totals['matched_score_sums']['hybrid'] ?? 0.0)) / $hybridCount
-        : 0.0;
-
-    if ($hybridCount > 0) {
-        return [
-            'headline' => 'Hybrid scoring found ' . $hybridCount . ' related ' . ($hybridCount === 1 ? 'title' : 'titles') . ' in this live collection.',
-            'note' => 'Average weighted probability: ' . landing_research_similarity_percentage_label($hybridAverage) . ' across Jaccard, Cosine, Levenshtein, and Sorensen-Dice.',
-            'algorithms' => $algorithmCards,
-        ];
-    }
-
-    return [
-        'headline' => 'Hybrid scoring did not detect strong related-title matches yet.',
-        'note' => 'Per-algorithm title probabilities are still shown below for the current live collection.',
-        'algorithms' => $algorithmCards,
-    ];
-}
-
-function landing_research_similarity_summary_empty(int $titlePoolCount): array
-{
-    $definitions = landing_research_similarity_definitions();
-    $emptyTotals = [
-        'counts' => array_fill_keys(array_keys($definitions), 0),
-        'matched_score_sums' => array_fill_keys(array_keys($definitions), 0.0),
-    ];
-
-    return landing_research_similarity_summary_from_totals($emptyTotals, $titlePoolCount);
-}
-
-function landing_research_title_similarity_summaries(array $researchRows): array
-{
-    $definitions = landing_research_similarity_definitions();
-    $preparedTitles = [];
-
-    foreach ($researchRows as $index => $researchRow) {
-        $title = landing_research_normalize_text($researchRow['title'] ?? '');
-
-        if ($title === '') {
-            continue;
-        }
-
-        $normalizedTitle = landing_research_similarity_normalized_title($title);
-        $tokens = landing_research_similarity_tokens($title);
-
-        $preparedTitles[$index] = [
-            'normalized_title' => $normalizedTitle,
-            'tokens' => $tokens,
-            'frequencies' => landing_research_similarity_frequencies($tokens),
-        ];
-    }
-
-    $titlePoolCount = count($preparedTitles);
-    $totalsByIndex = [];
-
-    foreach (array_keys($preparedTitles) as $index) {
-        $totalsByIndex[$index] = [
-            'counts' => array_fill_keys(array_keys($definitions), 0),
-            'matched_score_sums' => array_fill_keys(array_keys($definitions), 0.0),
-        ];
-    }
-
-    $preparedIndexes = array_keys($preparedTitles);
-    $preparedCount = count($preparedIndexes);
-
-    for ($outer = 0; $outer < $preparedCount; $outer++) {
-        $leftIndex = $preparedIndexes[$outer];
-        $leftTitle = $preparedTitles[$leftIndex];
-
-        for ($inner = $outer + 1; $inner < $preparedCount; $inner++) {
-            $rightIndex = $preparedIndexes[$inner];
-            $rightTitle = $preparedTitles[$rightIndex];
-
-            $scores = [
-                'jaccard' => landing_research_jaccard_similarity($leftTitle['tokens'], $rightTitle['tokens']),
-                'cosine' => landing_research_cosine_similarity($leftTitle['frequencies'], $rightTitle['frequencies']),
-                'levenshtein' => landing_research_levenshtein_similarity($leftTitle['normalized_title'], $rightTitle['normalized_title']),
-                'dice' => landing_research_dice_similarity($leftTitle['tokens'], $rightTitle['tokens']),
-            ];
-            $scores['hybrid'] = landing_research_hybrid_similarity($scores);
-
-            foreach ($definitions as $key => $definition) {
-                $threshold = (float) ($definition['threshold'] ?? 0.0);
-
-                if (((float) ($scores[$key] ?? 0.0)) < $threshold) {
-                    continue;
-                }
-
-                $totalsByIndex[$leftIndex]['counts'][$key]++;
-                $totalsByIndex[$rightIndex]['counts'][$key]++;
-                $totalsByIndex[$leftIndex]['matched_score_sums'][$key] += (float) $scores[$key];
-                $totalsByIndex[$rightIndex]['matched_score_sums'][$key] += (float) $scores[$key];
-            }
-        }
-    }
-
-    $summaries = [];
-    $defaultSummary = landing_research_similarity_summary_empty($titlePoolCount);
-
-    foreach ($researchRows as $index => $researchRow) {
-        if (!isset($totalsByIndex[$index])) {
-            $summaries[$index] = $defaultSummary;
-            continue;
-        }
-
-        $summaries[$index] = landing_research_similarity_summary_from_totals($totalsByIndex[$index], $titlePoolCount);
-    }
-
-    return $summaries;
-}
-
 function landing_research_sdg_labels(?string $sdgs): array
 {
     $normalized = landing_research_normalize_text($sdgs);
@@ -537,49 +173,32 @@ function landing_research_sdg_labels(?string $sdgs): array
     return array_values(array_unique($labels));
 }
 
-function landing_research_temporary_abstract(array $research): string
+function landing_research_abstract_summary(array $research): string
 {
-    $title = landing_research_normalize_text($research['title'] ?? 'This study');
-    $programLabel = landing_research_program_label($research);
-    $researchType = landing_research_normalize_text($research['research_type'] ?? '');
-    $sdgLabels = landing_research_sdg_labels($research['sdgs'] ?? '');
-    $researchTypeLabel = $researchType !== '' ? strtolower($researchType) : 'research';
-    $programPhrase = $programLabel !== 'Program not set'
-        ? 'under ' . $programLabel
-        : 'within the current catalog record';
-    $solutionLabel = 'digital solution';
-    $solutionArticle = 'a';
-    $lowerTitle = strtolower($title);
+    $abstract = landing_research_normalize_text(strip_tags((string) ($research['other_details'] ?? '')));
 
-    if (strpos($lowerTitle, 'system') !== false) {
-        $solutionLabel = 'system';
-        $solutionArticle = 'a';
-    } elseif (strpos($lowerTitle, 'application') !== false) {
-        $solutionLabel = 'application';
-        $solutionArticle = 'an';
-    } elseif (strpos($lowerTitle, 'platform') !== false) {
-        $solutionLabel = 'platform';
-        $solutionArticle = 'a';
-    }
-
-    $abstract = 'This temporary abstract presents ' . $title . ' as a ' . $researchTypeLabel . ' project ' . $programPhrase . '. '
-        . 'The study proposes ' . $solutionArticle . ' ' . $solutionLabel . ' that can improve the current workflow of its target users through faster transactions, organized records, and more accessible information management. '
-        . 'It is intended to support day-to-day operations, reduce manual processing, and provide a practical basis for future testing, refinement, and deployment.';
-
-    if ($sdgLabels !== []) {
-        $abstract .= ' The proposed output is aligned with ' . implode(', ', $sdgLabels) . '.';
-    }
-
-    return landing_research_trim($abstract, 360);
+    return $abstract !== '' ? landing_research_trim($abstract, 360) : '';
 }
 
-$researchCatalog = [];
-$landingDataError = null;
+function landing_research_abstract_type_label(array $research): string
+{
+    $researchType = landing_research_normalize_text($research['research_type'] ?? '');
+    $researchTypeLower = strtolower($researchType);
 
-try {
-    $pdo = Database::connection();
-    $researchRows = $pdo->query(
-        <<<'SQL'
+    if (strpos($researchTypeLower, 'capstone') !== false) {
+        return 'Capstone Project';
+    }
+
+    if (strpos($researchTypeLower, 'thesis') !== false) {
+        return 'Thesis';
+    }
+
+    return $researchType !== '' ? ucwords(strtolower($researchType)) : 'Research Record';
+}
+
+function landing_research_catalog_select_sql(): string
+{
+    return <<<'SQL'
 SELECT m.titleid,
        m.title,
        m.authors,
@@ -598,16 +217,84 @@ SELECT m.titleid,
        rt.research_type,
        m.submitted_at,
        m.updated_at
+SQL;
+}
+
+function landing_research_catalog_from_sql(): string
+{
+    return <<<'SQL'
 FROM tblresearches m
 LEFT JOIN tblaccount a ON a.accountid = m.adviser_accountid
 LEFT JOIN tblcourse p ON p.courseid = m.programid
 LEFT JOIN tblresearchtype rt ON rt.researchtypeid = m.typeid
 WHERE NULLIF(TRIM(COALESCE(m.title, '')), '') IS NOT NULL
-ORDER BY COALESCE(m.submitted_at, m.updated_at) DESC, m.titleid DESC
-SQL
-    )->fetchAll();
+SQL;
+}
 
-    $titleSimilaritySummaries = landing_research_title_similarity_summaries($researchRows);
+function landing_research_catalog_filters(string $query, int $year = 0, int $titleId = 0): array
+{
+    $conditions = [];
+    $params = [];
+
+    if ($titleId > 0) {
+        $conditions[] = 'm.titleid = :titleid';
+        $params[':titleid'] = [$titleId, PDO::PARAM_INT];
+    }
+
+    if ($year > 0) {
+        $conditions[] = 'YEAR(COALESCE(m.submitted_at, m.updated_at)) = :research_year';
+        $params[':research_year'] = [$year, PDO::PARAM_INT];
+    }
+
+    $query = landing_research_normalize_text($query);
+
+    if ($query !== '') {
+        $normalizedQuery = function_exists('mb_strtolower')
+            ? mb_strtolower($query, 'UTF-8')
+            : strtolower($query);
+        $escapedQuery = '%' . addcslashes($normalizedQuery, "\\%_") . '%';
+        $searchColumns = [
+            "LOWER(COALESCE(m.title, ''))",
+            "LOWER(COALESCE(m.authors, ''))",
+            "LOWER(COALESCE(m.adviser_name, ''))",
+            "LOWER(COALESCE(a.acc_name, ''))",
+            "LOWER(COALESCE(a.email, ''))",
+            "LOWER(COALESCE(p.coursecode, ''))",
+            "LOWER(COALESCE(p.coursedescription, ''))",
+            "LOWER(COALESCE(p.coursemajor, ''))",
+            "LOWER(COALESCE(rt.research_type, ''))",
+            "LOWER(COALESCE(m.status, ''))",
+            "LOWER(COALESCE(m.sdgs, ''))",
+            "LOWER(COALESCE(m.other_details, ''))",
+        ];
+        $searchConditions = [];
+
+        foreach ($searchColumns as $index => $column) {
+            $paramName = ':search' . (string) $index;
+            $searchConditions[] = $column . " LIKE " . $paramName . " ESCAPE '\\\\'";
+            $params[$paramName] = [$escapedQuery, PDO::PARAM_STR];
+        }
+
+        $conditions[] = '(' . implode(' OR ', $searchConditions) . ')';
+    }
+
+    return [
+        $conditions === [] ? '' : "\nAND " . implode("\nAND ", $conditions),
+        $params,
+    ];
+}
+
+function landing_research_bind_params(PDOStatement $statement, array $params): void
+{
+    foreach ($params as $name => $param) {
+        $statement->bindValue($name, $param[0], $param[1]);
+    }
+}
+
+function landing_research_catalog_items(array $researchRows, array $researchAvatarPalettes, int $offset = 0): array
+{
+    $items = [];
+    $paletteCount = count($researchAvatarPalettes);
 
     foreach ($researchRows as $index => $researchRow) {
         $title = landing_research_normalize_text($researchRow['title'] ?? '');
@@ -616,21 +303,25 @@ SQL
             continue;
         }
 
+        $titleId = isset($researchRow['titleid']) ? (int) $researchRow['titleid'] : 0;
         $authors = landing_research_authors_label($researchRow['authors'] ?? '');
         $adviser = landing_research_adviser_label($researchRow);
         $researchType = landing_research_normalize_text($researchRow['research_type'] ?? '');
         $status = landing_research_normalize_text($researchRow['status'] ?? '');
         $programLabel = landing_research_program_label($researchRow);
-        $programShortLabel = landing_research_program_short_label($researchRow);
         $year = landing_research_year($researchRow);
         $dateLabel = landing_research_date_label($researchRow);
         $sdgLabels = landing_research_sdg_labels($researchRow['sdgs'] ?? '');
-        $temporaryAbstract = landing_research_temporary_abstract($researchRow);
+        $abstractSummary = landing_research_abstract_summary($researchRow);
+        $hasAbstract = $abstractSummary !== '';
         $views = landing_research_static_views($title, $year);
-        $similaritySummary = $titleSimilaritySummaries[$index] ?? landing_research_similarity_summary_empty(count($titleSimilaritySummaries));
+        $paletteIndex = $paletteCount > 0 ? ($offset + $index) % $paletteCount : 0;
+        $avatarPalette = $paletteCount > 0
+            ? $researchAvatarPalettes[$paletteIndex]
+            : ['accent' => '#15803d', 'soft' => '#dcfce7', 'icon' => 'bx-book-open'];
 
-        $researchCatalog[] = [
-            'titleid' => isset($researchRow['titleid']) ? (int) $researchRow['titleid'] : 0,
+        $items[] = [
+            'titleid' => $titleId,
             'title' => $title,
             'authors' => $authors,
             'adviser' => $adviser,
@@ -642,46 +333,155 @@ SQL
             'type' => $researchType !== '' ? $researchType : 'Research record',
             'status' => $status !== '' ? $status : 'Status not set',
             'sdg_metric' => $sdgLabels !== [] ? implode(', ', $sdgLabels) : 'No SDG tags',
-            'similarity_headline' => $similaritySummary['headline'],
-            'similarity_note' => $similaritySummary['note'],
-            'similarity_algorithms' => $similaritySummary['algorithms'],
-            'summary' => $temporaryAbstract,
+            'summary' => $hasAbstract
+                ? $abstractSummary
+                : 'Abstract is not available in this ' . landing_research_abstract_type_label($researchRow) . '.',
+            'summary_is_placeholder' => !$hasAbstract,
             'views' => $views,
-            'image' => app_link($researchImages[$index % count($researchImages)]),
-            'search' => strtolower(
-                implode(
-                    ' ',
-                    [
-                        $title,
-                        $authors,
-                        $adviser,
-                        $programLabel,
-                        $programShortLabel,
-                        $researchType,
-                        $status,
-                        $dateLabel,
-                        implode(' ', $sdgLabels),
-                        $temporaryAbstract,
-                    ]
-                )
-            ),
+            'avatar_accent' => $avatarPalette['accent'],
+            'avatar_soft' => $avatarPalette['soft'],
+            'avatar_icon' => $avatarPalette['icon'],
         ];
     }
+
+    return $items;
+}
+
+function landing_research_fetch_catalog_page(
+    PDO $pdo,
+    array $researchAvatarPalettes,
+    int $limit,
+    int $offset,
+    string $query = '',
+    int $year = 0
+): array {
+    $limit = min(max($limit, 1), 48);
+    $offset = max($offset, 0);
+    [$filterSql, $params] = landing_research_catalog_filters($query, $year);
+
+    $countStatement = $pdo->prepare(
+        'SELECT COUNT(*) ' . landing_research_catalog_from_sql() . $filterSql
+    );
+    landing_research_bind_params($countStatement, $params);
+    $countStatement->execute();
+    $total = (int) $countStatement->fetchColumn();
+
+    $statement = $pdo->prepare(
+        landing_research_catalog_select_sql() . "\n" .
+        landing_research_catalog_from_sql() .
+        $filterSql .
+        "\nORDER BY COALESCE(m.submitted_at, m.updated_at) DESC, m.titleid DESC
+LIMIT :limit OFFSET :offset"
+    );
+    landing_research_bind_params($statement, $params);
+    $statement->bindValue(':limit', $limit, PDO::PARAM_INT);
+    $statement->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $statement->execute();
+
+    $items = landing_research_catalog_items($statement->fetchAll(), $researchAvatarPalettes, $offset);
+
+    return [
+        'items' => $items,
+        'total' => $total,
+        'offset' => $offset,
+        'limit' => $limit,
+        'has_more' => ($offset + count($items)) < $total,
+    ];
+}
+
+function landing_research_fetch_catalog_item(PDO $pdo, array $researchAvatarPalettes, int $titleId): ?array
+{
+    if ($titleId < 1) {
+        return null;
+    }
+
+    [$filterSql, $params] = landing_research_catalog_filters('', 0, $titleId);
+    $statement = $pdo->prepare(
+        landing_research_catalog_select_sql() . "\n" .
+        landing_research_catalog_from_sql() .
+        $filterSql .
+        "\nLIMIT 1"
+    );
+    landing_research_bind_params($statement, $params);
+    $statement->execute();
+
+    $items = landing_research_catalog_items($statement->fetchAll(), $researchAvatarPalettes);
+
+    return $items[0] ?? null;
+}
+
+function landing_research_fetch_years(PDO $pdo): array
+{
+    $rows = $pdo->query(
+        "SELECT DISTINCT YEAR(COALESCE(submitted_at, updated_at)) AS research_year
+         FROM tblresearches
+         WHERE NULLIF(TRIM(COALESCE(title, '')), '') IS NOT NULL
+         ORDER BY research_year DESC"
+    )->fetchAll(PDO::FETCH_COLUMN);
+
+    $years = array_map('intval', $rows ?: []);
+    $years = array_values(array_filter($years, static function (int $year): bool {
+        return $year > 0;
+    }));
+
+    rsort($years);
+
+    return $years;
+}
+
+if (($_GET['catalog'] ?? '') === '1') {
+    header('Content-Type: application/json; charset=UTF-8');
+
+    try {
+        $pdo = Database::connection();
+        $titleId = isset($_GET['title_id']) ? (int) $_GET['title_id'] : 0;
+
+        if ($titleId > 0) {
+            $item = landing_research_fetch_catalog_item($pdo, $researchAvatarPalettes, $titleId);
+            echo json_encode([
+                'items' => $item !== null ? [$item] : [],
+                'total' => $item !== null ? 1 : 0,
+                'offset' => 0,
+                'limit' => 1,
+                'has_more' => false,
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            exit;
+        }
+
+        $payload = landing_research_fetch_catalog_page(
+            $pdo,
+            $researchAvatarPalettes,
+            isset($_GET['limit']) ? (int) $_GET['limit'] : $initialResearchBatchSize,
+            isset($_GET['offset']) ? (int) $_GET['offset'] : 0,
+            (string) ($_GET['q'] ?? ''),
+            isset($_GET['year']) ? (int) $_GET['year'] : 0
+        );
+
+        echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    } catch (Throwable $exception) {
+        http_response_code(500);
+        echo json_encode([
+            'message' => 'Live research records are unavailable right now.',
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    exit;
+}
+
+$researchCatalog = [];
+$researchYears = [];
+$researchTotalCount = 0;
+$landingDataError = null;
+
+try {
+    $pdo = Database::connection();
+    $researchYears = landing_research_fetch_years($pdo);
+    $catalogPage = landing_research_fetch_catalog_page($pdo, $researchAvatarPalettes, $initialResearchBatchSize, 0);
+    $researchCatalog = $catalogPage['items'];
+    $researchTotalCount = (int) $catalogPage['total'];
 } catch (Throwable $exception) {
     $landingDataError = 'Live research records are unavailable right now.';
 }
-
-$researchYears = array_values(
-    array_unique(
-        array_map(
-            static function ($research) {
-                return $research['year'];
-            },
-            $researchCatalog
-        )
-    )
-);
-rsort($researchYears);
 
 $researchYearMin = $researchYears !== [] ? min($researchYears) : null;
 $researchYearMax = $researchYears !== [] ? max($researchYears) : null;
@@ -899,6 +699,24 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
       .sidebar-panel {
         position: sticky;
         top: 6.2rem;
+        max-height: calc(100vh - 7.2rem);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-color: #cbd5e1 transparent;
+        scrollbar-width: thin;
+      }
+
+      .sidebar-panel::-webkit-scrollbar {
+        width: 0.45rem;
+      }
+
+      .sidebar-panel::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      .sidebar-panel::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 999px;
       }
 
       .panel-title {
@@ -1026,17 +844,18 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
       .result-avatar {
         width: 74px;
         height: 74px;
-        overflow: hidden;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         border-radius: 999px;
         border: 3px solid rgba(255, 255, 255, 0.88);
-        background: #d9d2c6;
+        background: var(--research-avatar-soft, #dcfce7);
+        color: var(--research-avatar-accent, #15803d);
         box-shadow: 0 12px 24px rgba(76, 71, 62, 0.14);
       }
 
-      .result-avatar img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
+      .result-avatar i {
+        font-size: 2.1rem;
       }
 
       .result-avatar-badge {
@@ -1152,66 +971,9 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         font-size: 0.98rem;
       }
 
-      .research-match {
-        display: grid;
-        gap: 0.7rem;
-        padding: 1rem 1.05rem;
-        border: 1px solid rgba(134, 176, 118, 0.24);
-        border-radius: 1rem;
-        background: linear-gradient(135deg, rgba(240, 253, 244, 0.92), rgba(255, 255, 255, 0.96));
-      }
-
-      .research-match-copy,
-      .research-match-note {
-        margin: 0;
-      }
-
-      .research-match-copy {
-        color: #166534;
-        font-size: 0.97rem;
-        font-weight: 700;
-        line-height: 1.5;
-      }
-
-      .research-match-note {
-        color: #4b5563;
-        font-size: 0.84rem;
-        line-height: 1.55;
-      }
-
-      .research-match-list {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.55rem;
-      }
-
-      .similarity-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.45rem;
-        padding: 0.45rem 0.72rem;
-        border: 1px solid rgba(187, 247, 208, 0.9);
-        border-radius: 999px;
-        background: #ffffff;
-        color: #166534;
-        font-size: 0.8rem;
-        font-weight: 600;
-        line-height: 1.2;
-      }
-
-      .similarity-pill strong {
-        color: #111827;
-        font-weight: 700;
-      }
-
-      .similarity-pill--primary {
-        border-color: #166534;
-        background: #166534;
-        color: #ffffff;
-      }
-
-      .similarity-pill--primary strong {
-        color: #ffffff;
+      .research-summary--empty {
+        color: #6b7280;
+        font-style: italic;
       }
 
       .research-footer {
@@ -1345,92 +1107,43 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         padding: 1.4rem 0 2.5rem;
       }
 
-      .catalog-toolbar {
+      .rdi-statement {
         display: flex;
         align-items: center;
-        gap: 1rem;
-        margin-bottom: 1.5rem;
-        padding: 0 0 1.45rem;
-        border-bottom: 1px solid #e5e7eb;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+        padding: 0.72rem 0.95rem;
+        border: 1px solid #bbf7d0;
+        border-left: 4px solid #15803d;
+        border-radius: 0.9rem;
+        background: linear-gradient(135deg, #f0fdf4 0%, #ecfeff 100%);
+        color: #374151;
       }
 
-      .catalog-search-shell {
-        flex: 1 1 auto;
-        min-height: 4.35rem;
-        display: flex;
-        align-items: center;
-        gap: 0.7rem;
-        padding: 0 0.95rem 0 1.15rem;
-        border: 1px solid #d1d5db;
-        border-radius: 999px;
-        background: #ffffff;
-      }
-
-      .catalog-search-icon {
-        color: #4b5563;
-        font-size: 1.45rem;
-      }
-
-      .catalog-search-input {
-        flex: 1 1 auto;
-        border: none;
-        outline: none;
-        background: transparent;
-        color: #111827;
-        font-size: 0.98rem;
-      }
-
-      .catalog-search-input::placeholder {
-        color: #6b7280;
-      }
-
-      .catalog-search-clear {
-        width: 2.8rem;
-        height: 2.8rem;
+      .rdi-statement-icon {
+        width: 2.2rem;
+        height: 2.2rem;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        border: none;
+        flex: 0 0 2.2rem;
         border-radius: 999px;
-        background: transparent;
-        color: #4b5563;
-        font-size: 1.45rem;
+        background: #15803d;
+        color: #ffffff;
+        font-size: 1rem;
+        box-shadow: 0 8px 18px rgba(21, 128, 61, 0.14);
       }
 
-      .catalog-search-clear:hover,
-      .catalog-search-clear:focus {
-        background: #f3f4f6;
-        color: #111827;
-      }
-
-      .catalog-toolbar-side {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.8rem;
-        flex: 0 0 auto;
-      }
-
-      .catalog-year-label {
+      .rdi-statement p {
         margin: 0;
-        color: #4b5563;
-        font-size: 0.92rem;
-        font-weight: 600;
-      }
-
-      .catalog-year-select {
-        min-width: 10rem;
-        min-height: 4.1rem;
-        border-radius: 999px;
-        border: 1px solid #d1d5db;
-        background: #ffffff;
-        color: #111827;
+        max-width: 76rem;
         font-size: 0.94rem;
-        box-shadow: none;
+        line-height: 1.45;
       }
 
-      .catalog-year-select:focus {
-        border-color: #15803d;
-        box-shadow: 0 0 0 0.2rem rgba(21, 128, 61, 0.08);
+      .rdi-statement strong {
+        color: #14532d;
+        font-weight: 800;
       }
 
       .panel-card,
@@ -1464,6 +1177,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
 
       .sidebar-panel {
         top: 6rem;
+        max-height: calc(100vh - 7rem);
         padding: 1.4rem;
       }
 
@@ -1500,9 +1214,13 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
       }
 
       .sidebar-copy {
-        margin: 0 0 1rem;
-        color: #4b5563;
+        margin: 0 0 1.1rem;
+        padding-left: 0.85rem;
+        border-left: 3px solid #d1d5db;
+        color: #6b7280;
         font-size: 0.92rem;
+        font-style: italic;
+        font-weight: 400;
         line-height: 1.6;
       }
 
@@ -1613,7 +1331,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
 
       .result-avatar {
         border: 1px solid #e5e7eb;
-        background: #f3f4f6;
+        background: var(--research-avatar-soft, #dcfce7);
         box-shadow: none;
       }
 
@@ -1676,13 +1394,8 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         color: #374151;
       }
 
-      .research-match {
-        display: grid;
-        gap: 0.7rem;
-        padding: 1rem 1.05rem;
-        border: 1px solid rgba(134, 176, 118, 0.24);
-        border-radius: 1rem;
-        background: linear-gradient(135deg, rgba(240, 253, 244, 0.92), rgba(255, 255, 255, 0.96));
+      .research-summary--empty {
+        color: #6b7280;
       }
 
       .research-footer {
@@ -1726,8 +1439,8 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         position: fixed;
         right: clamp(1rem, 2.8vw, 2rem);
         bottom: clamp(1rem, 2.8vw, 2rem);
-        width: 5.5rem;
-        height: 5.5rem;
+        width: 5.8rem;
+        height: 5.8rem;
         padding: 0;
         border: 0;
         border-radius: 999px;
@@ -1738,10 +1451,10 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
       .ai-assistant-launcher::before {
         content: '';
         position: absolute;
-        inset: -0.45rem;
+        inset: -0.65rem;
         border-radius: inherit;
-        background: radial-gradient(circle, rgba(16, 185, 129, 0.28), rgba(16, 185, 129, 0));
-        animation: ai-launcher-pulse 2.8s ease-in-out infinite;
+        background: radial-gradient(circle, rgba(45, 212, 191, 0.26), rgba(59, 130, 246, 0));
+        animation: ai-launcher-glow 2.8s ease-in-out infinite;
       }
 
       .ai-launcher-shell {
@@ -1754,58 +1467,176 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         border-radius: inherit;
         overflow: hidden;
         isolation: isolate;
-        background: radial-gradient(circle at 30% 30%, #fef3c7 0%, #22c55e 42%, #0f766e 100%);
-        box-shadow: 0 22px 42px rgba(16, 185, 129, 0.22);
+        background: radial-gradient(circle at 34% 22%, #ecfeff 0%, #a5f3fc 42%, #0ea5e9 100%);
+        border: 1px solid rgba(14, 165, 233, 0.22);
+        box-shadow: 0 22px 42px rgba(14, 165, 233, 0.24);
       }
 
       .ai-launcher-shell::after {
         content: '';
         position: absolute;
-        inset: 0.4rem;
+        inset: 0.38rem;
         border-radius: inherit;
-        border: 1px solid rgba(255, 255, 255, 0.42);
+        border: 1px solid rgba(255, 255, 255, 0.64);
       }
 
-      .ai-launcher-ring {
+      .ai-launcher-bot {
         position: absolute;
-        inset: 0.55rem;
-        border-radius: inherit;
-        border: 1px solid rgba(255, 255, 255, 0.45);
-        animation: ai-launcher-spin 9s linear infinite;
-      }
-
-      .ai-launcher-ring--alt {
-        inset: 1rem;
-        border-style: dashed;
-        border-color: rgba(254, 243, 199, 0.76);
-        animation-direction: reverse;
-        animation-duration: 6s;
-      }
-
-      .ai-launcher-core {
-        position: relative;
+        inset: 0.6rem;
         z-index: 1;
-        display: inline-flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 0.08rem;
-        color: #ffffff;
-        text-shadow: 0 1px 8px rgba(0, 0, 0, 0.18);
+        animation: ai-bot-float 2.4s ease-in-out infinite;
       }
 
-      .ai-launcher-label {
-        font-family: 'Space Grotesk', 'Public Sans', sans-serif;
-        font-size: 1.1rem;
-        font-weight: 700;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
+      .ai-bot-bubble {
+        position: absolute;
+        width: 1.25rem;
+        height: 1.25rem;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #67e8f9, #2563eb);
+        box-shadow: inset 0 0 0 0.28rem rgba(255, 255, 255, 0.32);
+        animation: ai-bubble-pop 2.8s ease-in-out infinite;
       }
 
-      .ai-launcher-copy {
-        font-size: 0.66rem;
-        font-weight: 700;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
+      .ai-bot-bubble--left {
+        left: 0.05rem;
+        top: 1.1rem;
+      }
+
+      .ai-bot-bubble--right {
+        right: 0.05rem;
+        top: 1.2rem;
+        animation-delay: 0.45s;
+      }
+
+      .ai-bot-head {
+        position: absolute;
+        left: 50%;
+        top: 0.95rem;
+        width: 3.4rem;
+        height: 2.45rem;
+        transform: translateX(-50%);
+        border-radius: 1.35rem 1.35rem 1.05rem 1.05rem;
+        background: linear-gradient(135deg, #bfdbfe, #eff6ff);
+        box-shadow: inset 0 -0.45rem 0 rgba(14, 116, 144, 0.1);
+      }
+
+      .ai-bot-head::before {
+        content: '';
+        position: absolute;
+        left: 50%;
+        top: -0.55rem;
+        width: 0.18rem;
+        height: 0.8rem;
+        transform: rotate(26deg);
+        border-radius: 999px;
+        background: #22d3ee;
+      }
+
+      .ai-bot-head::after {
+        content: '';
+        position: absolute;
+        left: calc(50% + 0.28rem);
+        top: -0.7rem;
+        width: 0.44rem;
+        height: 0.44rem;
+        border-radius: 999px;
+        background: #38bdf8;
+        box-shadow: 0 0 0 0.16rem rgba(255, 255, 255, 0.72);
+      }
+
+      .ai-bot-face {
+        position: absolute;
+        left: 50%;
+        top: 0.55rem;
+        width: 2.35rem;
+        height: 1.35rem;
+        transform: translateX(-50%);
+        border-radius: 999px;
+        background: #075985;
+      }
+
+      .ai-bot-eye {
+        position: absolute;
+        top: 0.38rem;
+        width: 0.28rem;
+        height: 0.45rem;
+        border-radius: 999px;
+        background: #99f6e4;
+        animation: ai-eye-blink 3.2s ease-in-out infinite;
+      }
+
+      .ai-bot-eye--left {
+        left: 0.62rem;
+      }
+
+      .ai-bot-eye--right {
+        right: 0.62rem;
+      }
+
+      .ai-bot-smile {
+        position: absolute;
+        left: 50%;
+        bottom: 0.28rem;
+        width: 0.84rem;
+        height: 0.34rem;
+        transform: translateX(-50%);
+        border-radius: 0 0 999px 999px;
+        background: #ffffff;
+      }
+
+      .ai-bot-body {
+        position: absolute;
+        left: 50%;
+        bottom: 0.45rem;
+        width: 2.1rem;
+        height: 1.65rem;
+        transform: translateX(-50%);
+        border-radius: 0.95rem;
+        background: linear-gradient(135deg, #dbeafe, #0e7490);
+        box-shadow: inset 0 -0.32rem 0 rgba(15, 23, 42, 0.12);
+      }
+
+      .ai-bot-body::before {
+        content: '';
+        position: absolute;
+        left: 50%;
+        top: 0.45rem;
+        width: 0.44rem;
+        height: 0.44rem;
+        transform: translateX(-50%);
+        border-radius: 999px;
+        background: #99f6e4;
+      }
+
+      .ai-bot-jet {
+        position: absolute;
+        left: 50%;
+        bottom: -0.05rem;
+        width: 0.72rem;
+        height: 1.05rem;
+        transform: translateX(-50%);
+        border-radius: 999px;
+        background: linear-gradient(180deg, #cffafe, #38bdf8);
+        animation: ai-jet-pulse 0.9s ease-in-out infinite;
+      }
+
+      .ai-bot-arm {
+        position: absolute;
+        bottom: 1rem;
+        width: 0.7rem;
+        height: 1.25rem;
+        border-radius: 999px;
+        background: linear-gradient(180deg, #e0f2fe, #64748b);
+      }
+
+      .ai-bot-arm--left {
+        left: 1.05rem;
+        transform: rotate(42deg);
+      }
+
+      .ai-bot-arm--right {
+        right: 1.05rem;
+        transform: rotate(-42deg);
       }
 
       .ai-search-modal .modal-dialog {
@@ -1997,6 +1828,61 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         text-align: center;
       }
 
+      .ai-search-loader {
+        display: flex;
+        align-items: center;
+        gap: 0.95rem;
+        padding: 1.15rem 1.2rem;
+        border: 1px solid #bfdbfe;
+        border-radius: 1rem;
+        background: linear-gradient(135deg, #eff6ff, #ecfeff);
+        color: #1f2937;
+      }
+
+      .ai-search-loader-spinner {
+        width: 2.6rem;
+        height: 2.6rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 2.6rem;
+        border-radius: 999px;
+        background: #ffffff;
+        box-shadow: inset 0 0 0 1px #bfdbfe;
+      }
+
+      .ai-search-loader-spinner::before {
+        content: '';
+        width: 1.45rem;
+        height: 1.45rem;
+        border-radius: 999px;
+        border: 3px solid #bae6fd;
+        border-top-color: #059669;
+        animation: ai-loader-spin 0.78s linear infinite;
+      }
+
+      .ai-search-loader-copy {
+        display: grid;
+        gap: 0.2rem;
+      }
+
+      .ai-search-loader-title,
+      .ai-search-loader-note {
+        margin: 0;
+      }
+
+      .ai-search-loader-title {
+        color: #111827;
+        font-size: 0.95rem;
+        font-weight: 700;
+      }
+
+      .ai-search-loader-note {
+        color: #4b5563;
+        font-size: 0.84rem;
+        line-height: 1.5;
+      }
+
       .ai-search-card {
         display: grid;
         gap: 0.85rem;
@@ -2095,25 +1981,73 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         border-color: #15803d;
       }
 
-      @keyframes ai-launcher-pulse {
+      @keyframes ai-launcher-glow {
         0%,
         100% {
           transform: scale(0.92);
-          opacity: 0.62;
+          opacity: 0.48;
         }
 
         50% {
           transform: scale(1.08);
+          opacity: 0.92;
+        }
+      }
+
+      @keyframes ai-bot-float {
+        0% {
+          transform: translateY(0);
+        }
+
+        50% {
+          transform: translateY(-0.18rem);
+        }
+
+        100% {
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes ai-bubble-pop {
+        0%,
+        100% {
+          transform: translateY(0) scale(0.88);
+          opacity: 0.72;
+        }
+
+        50% {
+          transform: translateY(-0.2rem) scale(1.08);
           opacity: 1;
         }
       }
 
-      @keyframes ai-launcher-spin {
-        0% {
-          transform: rotate(0deg);
+      @keyframes ai-eye-blink {
+        0%,
+        84%,
+        100% {
+          transform: scaleY(1);
         }
 
+        90% {
+          transform: scaleY(0.18);
+        }
+      }
+
+      @keyframes ai-jet-pulse {
+        0%,
         100% {
+          transform: translateX(-50%) scaleY(0.76);
+          opacity: 0.74;
+        }
+
+        50% {
+          transform: translateX(-50%) scaleY(1.08);
+          opacity: 1;
+        }
+      }
+
+      @keyframes ai-loader-spin {
+        to {
           transform: rotate(360deg);
         }
       }
@@ -2132,22 +2066,11 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
       }
 
       @media (max-width: 991.98px) {
-        .catalog-toolbar {
-          flex-direction: column;
-          align-items: stretch;
-        }
-
-        .catalog-toolbar-side {
-          width: 100%;
-          justify-content: space-between;
-        }
-
-        .catalog-year-select {
-          flex: 1 1 auto;
-        }
-
         .sidebar-panel {
           position: static;
+          max-height: none;
+          overflow-y: visible;
+          overscroll-behavior: auto;
         }
 
         .results-note {
@@ -2183,14 +2106,16 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
           padding-top: 1.25rem;
         }
 
-        .catalog-search-shell,
-        .catalog-year-select {
-          min-height: 3.6rem;
+        .rdi-statement {
+          gap: 0.65rem;
+          padding: 0.7rem 0.85rem;
         }
 
-        .catalog-toolbar-side {
-          flex-direction: column;
-          align-items: stretch;
+        .rdi-statement-icon {
+          width: 2rem;
+          height: 2rem;
+          flex-basis: 2rem;
+          font-size: 0.95rem;
         }
 
         .panel-card,
@@ -2238,10 +2163,10 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
       <div class="container-xxl nav-shell">
         <a href="<?= e(app_link()); ?>" class="brand-lockup">
           <span class="brand-mark">
-            <i class="bx bx-book-reader"></i>
+            <i class="bx bx-library"></i>
           </span>
           <span>
-            <span class="brand-title">Oracle Research</span>
+            <span class="brand-title">Oracle</span>
           </span>
         </a>
 
@@ -2259,54 +2184,29 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
 
     <main class="landing-main">
       <div class="container-xxl content-shell">
-<?php if ($authError !== null || $authSuccess !== null || $configIssues !== []): ?>
-        <div class="status-stack">
-<?php if ($authError !== null): ?>
-          <div class="alert alert-danger mb-0" role="alert"><?= e($authError); ?></div>
-<?php endif; ?>
-<?php if ($authSuccess !== null): ?>
-          <div class="alert alert-success mb-0" role="alert"><?= e($authSuccess); ?></div>
-<?php endif; ?>
 <?php if ($configIssues !== []): ?>
+        <div class="status-stack">
           <div class="alert alert-warning mb-0" role="alert">
             Complete <code>.env</code> before testing Google login: <?= e(implode(', ', $configIssues)); ?>.
           </div>
-<?php endif; ?>
         </div>
 <?php endif; ?>
 
-        <section class="catalog-toolbar">
-          <div class="catalog-search-shell">
-            <label for="research-search" class="visually-hidden">Search research</label>
-            <span class="catalog-search-icon" aria-hidden="true"><i class="bx bx-search"></i></span>
-            <input
-              id="research-search"
-              type="search"
-              class="catalog-search-input"
-              placeholder="Search research titles, authors, advisers, and programs"
-              autocomplete="off"
-            />
-            <button type="button" class="catalog-search-clear" id="search-clear" aria-label="Clear search">
-              <i class="bx bx-x"></i>
-            </button>
-          </div>
-
-          <div class="catalog-toolbar-side">
-            <label for="research-year" class="catalog-year-label">Year</label>
-            <select id="research-year" class="form-select catalog-year-select">
-              <option value="">All years</option>
-<?php foreach ($researchYears as $year): ?>
-              <option value="<?= e((string) $year); ?>"><?= e((string) $year); ?></option>
-<?php endforeach; ?>
-            </select>
-          </div>
+        <section class="rdi-statement" aria-label="Research and innovation statement">
+          <span class="rdi-statement-icon" aria-hidden="true"><i class="bx bx-badge-check"></i></span>
+          <p>
+            <strong>This application is an official output of an approved research project</strong>
+            funded by the Sultan Kudarat State University &ndash; Office of the Research, Development and
+            Innovation (RDI), reflecting the University&rsquo;s commitment to transforming research into
+            impactful digital solutions.
+          </p>
         </section>
 
         <div class="row g-4">
           <div class="col-xl-3 col-lg-4">
             <aside class="panel-card sidebar-panel">
               <h2 class="sidebar-heading">Explore this collection</h2>
-              <p class="sidebar-copy">Scholar-inspired browsing cues for the Oracle research catalog while keeping the current portal design intact.</p>
+              <p class="sidebar-copy">Use these controls to narrow the research list by year, sort order, focus, and catalog tools.</p>
 
               <div class="insight-list">
                 <section class="insight-item sidebar-group" aria-label="Publication window">
@@ -2372,7 +2272,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
                       <span>Create alerts for newly uploaded manuscripts and research updates</span>
                     </div>
                   </div>
-                  <p class="sidebar-note"><?= e((string) count($researchCatalog)); ?> indexed records are currently available across <?= e($sidebarYearRangeLabel); ?>.</p>
+                  <p class="sidebar-note"><?= e((string) $researchTotalCount); ?> indexed records are currently available across <?= e($sidebarYearRangeLabel); ?>.</p>
                 </section>
               </div>
             </aside>
@@ -2383,25 +2283,28 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
               <div class="results-header">
                 <div>
                   <span class="hero-badge"><i class="bx bx-collection"></i> Research List</span>
-                  <p class="research-count-copy">Showing <span id="research-count"><?= e((string) min($initialResearchBatchSize, count($researchCatalog))); ?></span> of <?= e((string) count($researchCatalog)); ?> research items</p>
+                  <p class="research-count-copy">Showing <span id="research-count"><?= e((string) count($researchCatalog)); ?></span> of <span id="research-total"><?= e((string) $researchTotalCount); ?></span> research items</p>
                 </div>
               </div>
 
               <div class="research-list" id="research-grid">
-<?php foreach ($researchCatalog as $researchIndex => $research): ?>
+<?php foreach ($researchCatalog as $research): ?>
                 <article
                   id="research-entry-<?= e((string) $research['titleid']); ?>"
-                  class="research-result research-entry<?= $researchIndex >= $initialResearchBatchSize ? ' d-none' : ''; ?>"
-                  data-search="<?= e($research['search']); ?>"
+                  class="research-result research-entry"
                   data-year="<?= e((string) $research['year']); ?>"
                   data-titleid="<?= e((string) $research['titleid']); ?>"
                 >
                   <div class="result-shell">
                     <div class="result-visual">
-                      <div class="result-avatar">
-                        <img src="<?= e($research['image']); ?>" alt="<?= e($research['title']); ?>" loading="lazy" />
+                      <div
+                        class="result-avatar"
+                        style="--research-avatar-accent: <?= e($research['avatar_accent']); ?>; --research-avatar-soft: <?= e($research['avatar_soft']); ?>;"
+                        aria-hidden="true"
+                      >
+                        <i class="bx <?= e($research['avatar_icon']); ?>"></i>
                       </div>
-                      <span class="result-avatar-badge"><i class="bx bx-file"></i></span>
+                      <span class="result-avatar-badge"><i class="bx bx-search-alt"></i></span>
                     </div>
 
                     <div class="result-main">
@@ -2433,20 +2336,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
                         </span>
                       </div>
 
-                      <p class="research-summary"><?= e($research['summary']); ?></p>
-
-                      <div class="research-match">
-                        <p class="research-match-copy"><?= e($research['similarity_headline']); ?></p>
-                        <p class="research-match-note"><?= e($research['similarity_note']); ?></p>
-                        <div class="research-match-list">
-<?php foreach ($research['similarity_algorithms'] as $algorithm): ?>
-                          <span class="similarity-pill<?= !empty($algorithm['featured']) ? ' similarity-pill--primary' : ''; ?>">
-                            <strong><?= e($algorithm['label']); ?></strong>
-                            <span><?= e($algorithm['detail']); ?></span>
-                          </span>
-<?php endforeach; ?>
-                        </div>
-                      </div>
+                      <p class="research-summary<?= !empty($research['summary_is_placeholder']) ? ' research-summary--empty' : ''; ?>"><?= e($research['summary']); ?></p>
 
                       <div class="research-footer">
                         <div class="research-affiliation">
@@ -2467,12 +2357,12 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
                 </article>
 <?php endforeach; ?>
               </div>
-              <div id="scroll-sentinel" class="scroll-sentinel<?= count($researchCatalog) <= $initialResearchBatchSize ? ' d-none' : ''; ?>" aria-hidden="true"></div>
+              <div id="scroll-sentinel" class="scroll-sentinel<?= $researchTotalCount <= count($researchCatalog) ? ' d-none' : ''; ?>" aria-hidden="true"></div>
             </section>
 
             <div id="empty-state" class="empty-state d-none mt-4">
-              <h5 class="mb-2">No research matched the current filters</h5>
-              <p class="mb-0 text-muted">Try another keyword or switch the year filter back to "All years".</p>
+              <h5 class="mb-2">No research records found</h5>
+              <p class="mb-0 text-muted">No research records are available in the catalog right now.</p>
             </div>
           </div>
         </div>
@@ -2481,7 +2371,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
 
     <footer class="landing-footer">
       <div class="container-xxl footer-shell">
-        <p>Oracle Research Portal</p>
+        <p>Oracle</p>
         <p>ORACLE 2026</p>
       </div>
     </footer>
@@ -2494,11 +2384,20 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
       aria-label="Open AI research search"
     >
       <span class="ai-launcher-shell" aria-hidden="true">
-        <span class="ai-launcher-ring"></span>
-        <span class="ai-launcher-ring ai-launcher-ring--alt"></span>
-        <span class="ai-launcher-core">
-          <span class="ai-launcher-label">AI</span>
-          <span class="ai-launcher-copy">Match</span>
+        <span class="ai-launcher-bot">
+          <span class="ai-bot-bubble ai-bot-bubble--left"></span>
+          <span class="ai-bot-bubble ai-bot-bubble--right"></span>
+          <span class="ai-bot-head">
+            <span class="ai-bot-face">
+              <span class="ai-bot-eye ai-bot-eye--left"></span>
+              <span class="ai-bot-eye ai-bot-eye--right"></span>
+              <span class="ai-bot-smile"></span>
+            </span>
+          </span>
+          <span class="ai-bot-arm ai-bot-arm--left"></span>
+          <span class="ai-bot-arm ai-bot-arm--right"></span>
+          <span class="ai-bot-body"></span>
+          <span class="ai-bot-jet"></span>
         </span>
       </span>
     </button>
@@ -2510,7 +2409,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
             <div>
               <span class="hero-badge"><i class="bx bx-bot"></i> AI Research Match</span>
               <h5 class="modal-title" id="aiResearchModalLabel">Find the closest related research</h5>
-              <p class="ai-modal-copy">Describe a topic, problem, or title idea and the assistant will search <code>tblresearches</code> for the closest matching studies.</p>
+              <p class="ai-modal-copy">Describe a topic, problem, or title idea and the assistant will search the research catalog for the closest matching studies.</p>
             </div>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
@@ -2523,7 +2422,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
                 placeholder="Example: mobile appointment system for healthcare services"
               ></textarea>
               <div class="ai-search-toolbar">
-                <p class="ai-search-hint">Gemini reranks the closest catalog candidates when a key is available. If not, the portal still returns the best local similarity matches from the current research table.</p>
+                <p class="ai-search-hint">Gemini reranks the closest catalog candidates when a key is available. If not, the portal still searches the approved research catalog using local similarity.</p>
                 <button type="submit" class="btn ai-search-submit" id="ai-search-submit">
                   <span class="ai-submit-default">Search related research</span>
                   <span class="ai-submit-loading d-none">Searching...</span>
@@ -2545,84 +2444,231 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
     <script>
       (function () {
         const batchSize = <?= e((string) $initialResearchBatchSize); ?>;
-        const searchInput = document.getElementById('research-search');
-        const searchClearButton = document.getElementById('search-clear');
-        const yearInput = document.getElementById('research-year');
+        const catalogEndpoint = <?= json_encode(app_link('index.php')); ?>;
         const countOutput = document.getElementById('research-count');
+        const totalOutput = document.getElementById('research-total');
         const emptyState = document.getElementById('empty-state');
         const emptyStateMessage = emptyState ? emptyState.querySelector('p') : null;
-        const researchEntries = Array.from(document.querySelectorAll('.research-entry'));
+        const researchGrid = document.getElementById('research-grid');
         const scrollSentinel = document.getElementById('scroll-sentinel');
-        let visibleLimit = batchSize;
-        let matchedCount = 0;
+        let loadedCount = researchGrid ? researchGrid.querySelectorAll('.research-entry').length : 0;
+        let nextOffset = loadedCount;
+        let totalCount = <?= e((string) $researchTotalCount); ?>;
+        let isLoading = false;
+        let requestToken = 0;
 
-        if (!searchInput || !yearInput || !countOutput || !emptyState || researchEntries.length === 0) {
+        if (!countOutput || !totalOutput || !emptyState || !researchGrid) {
           return;
         }
 
         if (emptyStateMessage) {
-          emptyStateMessage.textContent = 'Try another keyword or switch the year filter back to "All years".';
+          emptyStateMessage.textContent = 'No research records are available in the catalog right now.';
         }
 
-        const applyFilters = () => {
-          const query = searchInput.value.trim().toLowerCase();
-          const selectedYear = yearInput.value;
-          let matchedIndex = 0;
-          let visibleCount = 0;
+        const escapeHtml = value => {
+          const node = document.createElement('div');
+          node.textContent = value == null ? '' : String(value);
+          return node.innerHTML;
+        };
 
-          researchEntries.forEach(entry => {
-            const matchesQuery = query === '' || entry.dataset.search.includes(query);
-            const matchesYear = selectedYear === '' || entry.dataset.year === selectedYear;
-            const matchesFilters = matchesQuery && matchesYear;
-            const visible = matchesFilters && matchedIndex < visibleLimit;
+        const formatNumber = value => {
+          const numericValue = Number(value || 0);
 
-            entry.classList.toggle('d-none', !visible);
+          if (window.Intl && window.Intl.NumberFormat) {
+            return new Intl.NumberFormat().format(numericValue);
+          }
 
-            if (matchesFilters) {
-              matchedIndex += 1;
-            }
+          return String(numericValue);
+        };
 
-            if (visible) {
-              visibleCount += 1;
-            }
-          });
+        const renderResearch = research => {
+          const title = escapeHtml(research.title || '');
 
-          matchedCount = matchedIndex;
-          countOutput.textContent = String(visibleCount);
-          emptyState.classList.toggle('d-none', matchedCount !== 0);
+          return ''
+            + '<article id="research-entry-' + escapeHtml(research.titleid || '') + '" class="research-result research-entry" data-year="' + escapeHtml(research.year || '') + '" data-titleid="' + escapeHtml(research.titleid || '') + '">'
+            + '  <div class="result-shell">'
+            + '    <div class="result-visual">'
+            + '      <div class="result-avatar" style="--research-avatar-accent: ' + escapeHtml(research.avatar_accent || '#15803d') + '; --research-avatar-soft: ' + escapeHtml(research.avatar_soft || '#dcfce7') + ';" aria-hidden="true">'
+            + '        <i class="bx ' + escapeHtml(research.avatar_icon || 'bx-book-open') + '"></i>'
+            + '      </div>'
+            + '      <span class="result-avatar-badge"><i class="bx bx-search-alt"></i></span>'
+            + '    </div>'
+            + '    <div class="result-main">'
+            + '      <div class="result-topbar">'
+            + '        <div class="result-heading">'
+            + '          <p class="research-author">' + escapeHtml(research.lead_author || 'Author information unavailable') + '</p>'
+            + '          <h3 class="research-title">' + title + '</h3>'
+            + '          <p class="research-location">' + escapeHtml((research.institution || 'Research record') + ' | ' + (research.location || 'Date unavailable')) + '</p>'
+            + '        </div>'
+            + '        <button type="button" class="btn result-action">View research</button>'
+            + '      </div>'
+            + '      <div class="research-metrics">'
+            + '        <span class="metric-line"><span class="metric-icon"><i class="bx bx-calendar"></i></span><strong>' + escapeHtml(research.year || '') + '</strong></span>'
+            + '        <span class="metric-line"><span class="metric-icon"><i class="bx bx-book-content"></i></span><strong>' + escapeHtml(research.type || 'Research record') + '</strong></span>'
+            + '        <span class="metric-line"><span class="metric-icon"><i class="bx bx-show"></i></span><strong>' + formatNumber(research.views || 0) + '</strong> views</span>'
+            + '        <span class="metric-pill metric-pill--green"><i class="bx bx-target-lock"></i> ' + escapeHtml(research.sdg_metric || 'No SDG tags') + '</span>'
+            + '      </div>'
+            + '      <p class="research-summary' + (research.summary_is_placeholder ? ' research-summary--empty' : '') + '">' + escapeHtml(research.summary || '') + '</p>'
+            + '      <div class="research-footer">'
+            + '        <div class="research-affiliation">'
+            + '          <span class="research-affiliation-mark"><i class="bx bx-buildings"></i></span>'
+            + '          <div><div class="insight-label">Adviser</div><div class="research-domain">' + escapeHtml(research.adviser || 'Adviser not assigned') + '</div></div>'
+            + '        </div>'
+            + '        <div><div class="insight-label">Research domain</div><div class="research-domain">' + escapeHtml(research.domain || 'Program not set') + '</div></div>'
+            + '      </div>'
+            + '    </div>'
+            + '  </div>'
+            + '</article>';
+        };
+
+        const refreshCounters = () => {
+          loadedCount = researchGrid.querySelectorAll('.research-entry').length;
+          countOutput.textContent = String(loadedCount);
+          totalOutput.textContent = String(totalCount);
+          emptyState.classList.toggle('d-none', isLoading || totalCount !== 0);
 
           if (scrollSentinel) {
-            scrollSentinel.classList.toggle('d-none', matchedCount === 0 || visibleCount >= matchedCount);
+            scrollSentinel.classList.toggle('d-none', isLoading || totalCount === 0 || nextOffset >= totalCount);
           }
         };
 
-        const resetAndApplyFilters = () => {
-          visibleLimit = batchSize;
-          applyFilters();
+        const appendResearchItems = items => {
+          const existingTitleIds = new Set(
+            Array.from(researchGrid.querySelectorAll('.research-entry')).map(entry => entry.dataset.titleid)
+          );
+          const markup = (items || [])
+            .filter(item => {
+              const titleId = String(item && item.titleid ? item.titleid : '').trim();
+
+              if (titleId === '' || existingTitleIds.has(titleId)) {
+                return false;
+              }
+
+              existingTitleIds.add(titleId);
+              return true;
+            })
+            .map(renderResearch)
+            .join('');
+
+          if (markup !== '') {
+            researchGrid.insertAdjacentHTML('beforeend', markup);
+          }
+        };
+
+        const catalogUrl = params => {
+          const url = new URL(catalogEndpoint, window.location.origin);
+          url.searchParams.set('catalog', '1');
+
+          Object.keys(params).forEach(key => {
+            const value = params[key];
+
+            if (value !== null && value !== undefined && String(value) !== '') {
+              url.searchParams.set(key, String(value));
+            }
+          });
+
+          return url;
+        };
+
+        const loadCatalog = async options => {
+          const shouldReset = Boolean(options && options.reset);
+
+          if (isLoading && !shouldReset) {
+            return false;
+          }
+
+          const token = ++requestToken;
+          isLoading = true;
+          refreshCounters();
+
+          if (shouldReset) {
+            researchGrid.innerHTML = '';
+            loadedCount = 0;
+            nextOffset = 0;
+            refreshCounters();
+          }
+
+          try {
+            const response = await fetch(catalogUrl({
+              limit: batchSize,
+              offset: shouldReset ? 0 : nextOffset,
+            }), {
+              headers: {
+                'Accept': 'application/json',
+              },
+            });
+            const payload = await response.json();
+
+            if (token !== requestToken) {
+              return false;
+            }
+
+            if (!response.ok) {
+              throw new Error(payload && payload.message ? payload.message : 'Unable to load research records.');
+            }
+
+            totalCount = Number(payload.total || 0);
+            const payloadItems = Array.isArray(payload.items) ? payload.items : [];
+            appendResearchItems(payloadItems);
+            nextOffset = (shouldReset ? 0 : nextOffset) + payloadItems.length;
+            return true;
+          } catch (error) {
+            if (token === requestToken && emptyStateMessage) {
+              totalCount = researchGrid.querySelectorAll('.research-entry').length;
+              emptyStateMessage.textContent = error && error.message ? error.message : 'Unable to load research records.';
+            }
+            return false;
+          } finally {
+            if (token === requestToken) {
+              isLoading = false;
+              refreshCounters();
+            }
+          }
+        };
+
+        const loadSingleResearch = async titleId => {
+          const response = await fetch(catalogUrl({
+            title_id: titleId,
+            limit: 1,
+          }), {
+            headers: {
+              'Accept': 'application/json',
+            },
+          });
+          const payload = await response.json();
+
+          if (!response.ok) {
+            return null;
+          }
+
+          const items = Array.isArray(payload.items) ? payload.items : [];
+
+          return items[0] || null;
         };
 
         window.oracleLandingCatalog = {
-          focusResearch(titleId, titleQuery) {
+          async focusResearch(titleId, titleQuery) {
             const normalizedTitleId = String(titleId || '').trim();
 
             if (normalizedTitleId === '') {
               return false;
             }
 
-            if (searchInput) {
-              searchInput.value = String(titleQuery || '').trim();
+            let targetEntry = document.querySelector('.research-entry[data-titleid="' + normalizedTitleId + '"]');
+
+            if (!targetEntry) {
+              const item = await loadSingleResearch(normalizedTitleId);
+
+              if (item) {
+                researchGrid.insertAdjacentHTML('afterbegin', renderResearch(item));
+                totalCount = Math.max(totalCount, researchGrid.querySelectorAll('.research-entry').length);
+                refreshCounters();
+              }
+
+              targetEntry = document.querySelector('.research-entry[data-titleid="' + normalizedTitleId + '"]');
             }
 
-            if (yearInput) {
-              yearInput.value = '';
-            }
-
-            visibleLimit = researchEntries.length;
-            applyFilters();
-
-            const targetEntry = document.querySelector('.research-entry[data-titleid="' + normalizedTitleId + '"]');
-
-            if (!targetEntry || targetEntry.classList.contains('d-none')) {
+            if (!targetEntry) {
               return false;
             }
 
@@ -2640,27 +2686,15 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
           },
         };
 
-        searchInput.addEventListener('input', resetAndApplyFilters);
-        yearInput.addEventListener('change', resetAndApplyFilters);
-
-        if (searchClearButton) {
-          searchClearButton.addEventListener('click', () => {
-            searchInput.value = '';
-            searchInput.focus();
-            resetAndApplyFilters();
-          });
-        }
-
         if (scrollSentinel && 'IntersectionObserver' in window) {
           const observer = new IntersectionObserver(entries => {
             const isVisible = entries.some(entry => entry.isIntersecting);
 
-            if (!isVisible || matchedCount <= visibleLimit) {
+            if (!isVisible || isLoading || nextOffset >= totalCount) {
               return;
             }
 
-            visibleLimit += batchSize;
-            applyFilters();
+            loadCatalog();
           }, {
             rootMargin: '240px 0px',
           });
@@ -2668,7 +2702,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
           observer.observe(scrollSentinel);
         }
 
-        resetAndApplyFilters();
+        refreshCounters();
       })();
 
       (function () {
@@ -2680,7 +2714,6 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         const submitButton = document.getElementById('ai-search-submit');
         const defaultText = submitButton ? submitButton.querySelector('.ai-submit-default') : null;
         const loadingText = submitButton ? submitButton.querySelector('.ai-submit-loading') : null;
-        const landingSearchInput = document.getElementById('research-search');
         const aiSearchEndpoint = <?= json_encode(app_link('research_ai_search.php')); ?>;
 
         if (!modalElement || !form || !queryInput || !statusContainer || !resultsContainer || !submitButton || !defaultText || !loadingText) {
@@ -2700,7 +2733,20 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         };
 
         const renderPlaceholder = message => {
+          resultsContainer.setAttribute('aria-busy', 'false');
           resultsContainer.innerHTML = '<div class="ai-search-empty">' + escapeHtml(message) + '</div>';
+        };
+
+        const renderSearchLoader = query => {
+          resultsContainer.setAttribute('aria-busy', 'true');
+          resultsContainer.innerHTML =
+            '<div class="ai-search-loader" role="status">'
+            + '  <span class="ai-search-loader-spinner" aria-hidden="true"></span>'
+            + '  <span class="ai-search-loader-copy">'
+            + '    <span class="ai-search-loader-title">Searching the research database...</span>'
+            + '    <span class="ai-search-loader-note">Checking titles, abstracts, authors, advisers, and program details for "' + escapeHtml(query) + '".</span>'
+            + '  </span>'
+            + '</div>';
         };
 
         const renderStatus = (message, tone, badges, note) => {
@@ -2733,6 +2779,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
             badges,
             payload && payload.notice ? payload.notice : ''
           );
+          resultsContainer.setAttribute('aria-busy', 'false');
 
           if (matches.length === 0) {
             renderPlaceholder('No close research match was found for that prompt.');
@@ -2774,16 +2821,10 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         };
 
         modalElement.addEventListener('shown.bs.modal', () => {
-          if (queryInput.value.trim() === '' && landingSearchInput && landingSearchInput.value.trim() !== '') {
-            queryInput.value = landingSearchInput.value.trim();
-            queryInput.select();
-            return;
-          }
-
           queryInput.focus();
         });
 
-        resultsContainer.addEventListener('click', event => {
+        resultsContainer.addEventListener('click', async event => {
           const locateButton = event.target.closest('[data-ai-locate]');
 
           if (!locateButton) {
@@ -2798,7 +2839,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
             return;
           }
 
-          const focused = window.oracleLandingCatalog.focusResearch(titleId, title);
+          const focused = await window.oracleLandingCatalog.focusResearch(titleId, title);
 
           if (!focused) {
             renderStatus('The matching research card could not be located from the landing page.', 'danger', ['Locator unavailable'], '');
@@ -2823,8 +2864,8 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
           }
 
           setSubmitting(true);
-          renderStatus('Searching the research catalog for the closest related studies...', 'neutral', ['Searching'], '');
-          renderPlaceholder('Checking titles, summaries, advisers, and program context...');
+          renderStatus('Searching the research catalog for the closest related studies...', 'neutral', ['Database search'], '');
+          renderSearchLoader(query);
 
           try {
             const response = await fetch(aiSearchEndpoint, {
@@ -2854,6 +2895,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
 
             renderMatches(payload);
           } catch (error) {
+            resultsContainer.setAttribute('aria-busy', 'false');
             renderStatus(error && error.message ? error.message : 'Unable to search the research catalog right now.', 'danger', ['Search failed'], '');
             renderPlaceholder('Try another prompt or check the Gemini configuration in the environment file.');
           } finally {

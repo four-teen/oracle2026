@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 final class Auth
 {
+    public const ROLE_ADMIN = 1;
+    public const ROLE_RESEARCH_COORDINATOR = 2;
+
     public static function check(): bool
     {
         return isset($_SESSION['auth']['account']) && is_array($_SESSION['auth']['account']);
@@ -48,6 +51,8 @@ final class Auth
         $account = self::account() ?? [];
         $freshAccount = null;
 
+        Database::ensureAccountCoordinatorColumns();
+
         if (isset($account['accountid'])) {
             $freshAccount = Database::findAccountById((int) $account['accountid']);
         }
@@ -69,5 +74,89 @@ final class Auth
         }
 
         $_SESSION['auth']['account'] = $freshAccount;
+    }
+
+    public static function role(): int
+    {
+        $account = self::account();
+
+        return is_array($account) && isset($account['acc_type']) ? (int) $account['acc_type'] : 0;
+    }
+
+    public static function isAdmin(): bool
+    {
+        return self::role() === self::ROLE_ADMIN;
+    }
+
+    public static function isResearchCoordinator(): bool
+    {
+        return self::role() === self::ROLE_RESEARCH_COORDINATOR;
+    }
+
+    public static function campusId(): int
+    {
+        $account = self::account();
+
+        return is_array($account) && isset($account['campus']) ? (int) $account['campus'] : 0;
+    }
+
+    public static function programId(): int
+    {
+        $account = self::account();
+
+        return is_array($account) && isset($account['programid']) ? (int) $account['programid'] : 0;
+    }
+
+    public static function requireAdmin(): void
+    {
+        self::requireLogin();
+
+        if (!self::isResearchCoordinator()) {
+            return;
+        }
+
+        if (self::campusId() > 0) {
+            redirect(app_link('coordinator/'));
+        }
+
+        set_flash('auth_error', 'Your research coordinator account must be assigned to a campus first.');
+        redirect(app_link());
+    }
+
+    public static function requireResearchCoordinator(): void
+    {
+        self::requireLogin();
+
+        if (!self::isResearchCoordinator()) {
+            if (self::isAdmin()) {
+                redirect(app_link('administrator/'));
+            }
+
+            set_flash('auth_error', 'Your account is active, but no research coordinator workspace is assigned to it.');
+            redirect(app_link());
+        }
+
+        if (self::campusId() < 1) {
+            set_flash('auth_error', 'Your research coordinator account must be assigned to a campus first.');
+            redirect(app_link());
+        }
+    }
+
+    public static function defaultWorkspaceUrl(?array $account = null): string
+    {
+        $resolvedAccount = $account ?? self::account() ?? [];
+        $role = isset($resolvedAccount['acc_type']) ? (int) $resolvedAccount['acc_type'] : 0;
+
+        if ($role === self::ROLE_RESEARCH_COORDINATOR) {
+            return (int) ($resolvedAccount['campus'] ?? 0) > 0
+                ? app_link('coordinator/')
+                : app_link();
+        }
+
+        if (isset($resolvedAccount['accountid']) || isset($resolvedAccount['email'])) {
+            return app_link('administrator/');
+        }
+
+        return app_link();
     }
 }

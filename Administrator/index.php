@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/app/bootstrap.php';
 
+Auth::requireAdmin();
+
 function admin_dashboard_int(array $row, string $key): int
 {
     return isset($row[$key]) ? (int) $row[$key] : 0;

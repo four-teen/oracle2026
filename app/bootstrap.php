@@ -15,3 +15,4 @@ require_once __DIR__ . '/TitleSimilarity.php';
 require_once __DIR__ . '/GoogleOAuth.php';
 require_once __DIR__ . '/Auth.php';
 require_once __DIR__ . '/AdminPage.php';
+require_once __DIR__ . '/CoordinatorPage.php';

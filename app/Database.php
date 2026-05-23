@@ -113,6 +113,58 @@ final class Database
         unset(self::$tableColumns['tblaccount']);
     }
 
+    public static function ensureAccountCoordinatorColumns(): void
+    {
+        self::ensureAccountStatusColumn();
+        self::ensureCampusTable();
+        self::ensureCourseTable();
+
+        $accountColumns = self::tableColumns('tblaccount');
+
+        if (!in_array('campus', $accountColumns, true)) {
+            self::connection()->exec(
+                'ALTER TABLE tblaccount
+                 ADD COLUMN campus INT(11) NULL AFTER is_enabled'
+            );
+            self::$accountColumns = null;
+            unset(self::$tableColumns['tblaccount']);
+            $accountColumns = self::tableColumns('tblaccount');
+        }
+
+        if (!in_array('programid', $accountColumns, true)) {
+            self::connection()->exec(
+                'ALTER TABLE tblaccount
+                 ADD COLUMN programid INT(11) NULL AFTER campus'
+            );
+            self::$accountColumns = null;
+            unset(self::$tableColumns['tblaccount']);
+            $accountColumns = self::tableColumns('tblaccount');
+        }
+
+        self::ensureColumnType('tblaccount', 'campus', 'INT(11)', true);
+        self::ensureColumnType('tblaccount', 'programid', 'INT(11)', true);
+        self::ensureIndex('tblaccount', 'idx_tblaccount_campus', 'campus');
+        self::ensureIndex('tblaccount', 'idx_tblaccount_programid', 'programid');
+
+        self::connection()->exec(
+            'UPDATE tblaccount a
+             LEFT JOIN tblcampus c ON c.campusid = a.campus
+             SET a.campus = NULL
+             WHERE a.campus IS NOT NULL
+               AND c.campusid IS NULL'
+        );
+        self::connection()->exec(
+            'UPDATE tblaccount a
+             LEFT JOIN tblcourse p ON p.courseid = a.programid
+             SET a.programid = NULL
+             WHERE a.programid IS NOT NULL
+               AND p.courseid IS NULL'
+        );
+
+        self::$accountColumns = null;
+        unset(self::$tableColumns['tblaccount']);
+    }
+
     public static function ensureResearchTypeTable(): void
     {
         $tableAlreadyExists = self::tableExists('tblresearchtype');
@@ -775,7 +827,7 @@ final class Database
         $targetType = strtolower(trim($type));
         $isNullable = strtoupper((string) ($columnMeta['Null'] ?? '')) === 'YES';
 
-        if ($currentType === $targetType && $isNullable === $nullable) {
+        if (self::normalizedColumnType($currentType) === self::normalizedColumnType($targetType) && $isNullable === $nullable) {
             return;
         }
 
@@ -785,6 +837,16 @@ final class Database
         );
 
         unset(self::$tableColumns[$table]);
+    }
+
+    private static function normalizedColumnType(string $type): string
+    {
+        $normalized = strtolower(trim($type));
+        $normalized = preg_replace('/\binteger\b/', 'int', $normalized);
+        $normalized = preg_replace('/\b(tinyint|smallint|mediumint|int|bigint)\(\d+\)/', '$1', (string) $normalized);
+        $normalized = preg_replace('/\s+/', ' ', (string) $normalized);
+
+        return is_string($normalized) ? trim($normalized) : strtolower(trim($type));
     }
 
     private static function ensureIndex(string $table, string $indexName, string $columns, bool $unique = false): void

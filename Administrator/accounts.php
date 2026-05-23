@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/app/bootstrap.php';
 
+Auth::requireAdmin();
+
 function administrator_account_role_map(): array
 {
     return [
         1 => 'Administrator',
-        2 => 'Staff',
+        2 => 'Research Coordinator',
         3 => 'Student',
         4 => 'Professor',
         0 => 'User',
@@ -145,6 +147,59 @@ function administrator_account_initial(string $value): string
     return strtoupper(substr($trimmed, 0, 1));
 }
 
+function administrator_account_positive_int($value): int
+{
+    if (is_array($value)) {
+        return 0;
+    }
+
+    $normalized = trim((string) $value);
+
+    if ($normalized === '' || !ctype_digit($normalized)) {
+        return 0;
+    }
+
+    return (int) $normalized;
+}
+
+function administrator_account_campus_label(array $campus): string
+{
+    $campusId = isset($campus['campusid']) ? (int) $campus['campusid'] : 0;
+    $campusName = trim((string) ($campus['campusname'] ?? $campus['campus_name'] ?? ''));
+
+    return $campusName !== '' ? $campusName : ($campusId > 0 ? 'Campus #' . $campusId : 'Campus not assigned');
+}
+
+function administrator_account_program_label(array $program): string
+{
+    $programId = isset($program['programid']) ? (int) $program['programid'] : (int) ($program['courseid'] ?? 0);
+    $courseCode = trim((string) ($program['coursecode'] ?? ''));
+    $courseDescription = trim((string) ($program['coursedescription'] ?? ''));
+    $courseMajor = trim((string) ($program['coursemajor'] ?? ''));
+    $campusName = trim((string) ($program['campusname'] ?? ''));
+    $parts = [];
+
+    if ($courseCode !== '') {
+        $parts[] = $courseCode;
+    }
+
+    if ($courseDescription !== '') {
+        $parts[] = $courseDescription;
+    }
+
+    $label = $parts !== [] ? implode(' - ', $parts) : ($programId > 0 ? 'Program #' . $programId : 'Program not assigned');
+
+    if ($courseMajor !== '') {
+        $label .= ' (' . $courseMajor . ')';
+    }
+
+    if ($campusName !== '') {
+        $label .= ' - ' . $campusName;
+    }
+
+    return $label;
+}
+
 $roleMap = administrator_account_role_map();
 $search = isset($_GET['q']) ? trim((string) $_GET['q']) : '';
 $roleFilter = isset($_GET['role']) ? trim((string) $_GET['role']) : '';
@@ -169,6 +224,11 @@ if ($editAccountId < 1) {
 }
 
 $accounts = [];
+$campusOptions = [];
+$programOptions = [];
+$campusOptionMap = [];
+$programOptionMap = [];
+$programCampusMap = [];
 $roleCounts = array_fill_keys(array_map('strval', array_keys($roleMap)), 0);
 $totalAccounts = 0;
 $enabledAccounts = 0;
@@ -196,7 +256,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $pdo = Database::connection();
-        Database::ensureAccountStatusColumn();
+        Database::ensureAccountCoordinatorColumns();
 
         if ($postedAction === 'save_account') {
             $accountId = isset($_POST['accountid']) ? (int) $_POST['accountid'] : 0;
@@ -209,6 +269,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $name = trim((string) ($_POST['acc_name'] ?? ''));
             $email = trim((string) ($_POST['email'] ?? ''));
             $roleInput = trim((string) ($_POST['acc_type'] ?? ''));
+            $roleId = (int) $roleInput;
+            $campusId = administrator_account_positive_int($_POST['campus'] ?? 0);
+            $programId = administrator_account_positive_int($_POST['programid'] ?? 0);
 
             if ($name === '') {
                 throw new RuntimeException('Account name is required.');
@@ -226,8 +289,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Email must be 50 characters or fewer.');
             }
 
-            if ($roleInput === '' || !array_key_exists((int) $roleInput, $roleMap)) {
+            if ($roleInput === '' || !array_key_exists($roleId, $roleMap)) {
                 throw new RuntimeException('Select a valid role.');
+            }
+
+            if ($roleId === Auth::ROLE_RESEARCH_COORDINATOR && $campusId < 1) {
+                throw new RuntimeException('Assign a campus to every research coordinator account.');
+            }
+
+            if ($campusId > 0) {
+                $campusStatement = $pdo->prepare(
+                    'SELECT campusid
+                     FROM tblcampus
+                     WHERE campusid = :campusid
+                     LIMIT 1'
+                );
+                $campusStatement->bindValue(':campusid', $campusId, PDO::PARAM_INT);
+                $campusStatement->execute();
+
+                if ((int) $campusStatement->fetchColumn() < 1) {
+                    throw new RuntimeException('The selected campus does not exist.');
+                }
+            }
+
+            if ($programId > 0) {
+                $programStatement = $pdo->prepare(
+                    "SELECT course.courseid,
+                            CAST(NULLIF(TRIM(COALESCE(college.collegecampus, '')), '') AS UNSIGNED) AS campusid
+                     FROM tblcourse course
+                     LEFT JOIN tblcollege college
+                       ON college.collegeid = CAST(NULLIF(TRIM(COALESCE(course.coursecollege, '')), '') AS UNSIGNED)
+                     WHERE course.courseid = :programid
+                     LIMIT 1"
+                );
+                $programStatement->bindValue(':programid', $programId, PDO::PARAM_INT);
+                $programStatement->execute();
+                $programRow = $programStatement->fetch();
+
+                if (!is_array($programRow)) {
+                    throw new RuntimeException('The selected program does not exist.');
+                }
+
+                $programCampusId = administrator_account_positive_int($programRow['campusid'] ?? 0);
+
+                if ($campusId > 0 && $programCampusId > 0 && $programCampusId !== $campusId) {
+                    throw new RuntimeException('Select a program that belongs to the assigned campus.');
+                }
             }
 
             $normalizedEmail = normalize_email($email);
@@ -260,12 +367,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'UPDATE tblaccount
                  SET acc_name = :acc_name,
                      email = :email,
-                     acc_type = :acc_type
+                     acc_type = :acc_type,
+                     campus = :campus,
+                     programid = :programid
                  WHERE accountid = :accountid'
             );
             $updateStatement->bindValue(':acc_name', $name);
             $updateStatement->bindValue(':email', $email);
-            $updateStatement->bindValue(':acc_type', (int) $roleInput, PDO::PARAM_INT);
+            $updateStatement->bindValue(':acc_type', $roleId, PDO::PARAM_INT);
+            $campusId > 0
+                ? $updateStatement->bindValue(':campus', $campusId, PDO::PARAM_INT)
+                : $updateStatement->bindValue(':campus', null, PDO::PARAM_NULL);
+            $programId > 0
+                ? $updateStatement->bindValue(':programid', $programId, PDO::PARAM_INT)
+                : $updateStatement->bindValue(':programid', null, PDO::PARAM_NULL);
             $updateStatement->bindValue(':accountid', $accountId, PDO::PARAM_INT);
             $updateStatement->execute();
 
@@ -327,6 +442,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'email' => trim((string) ($_POST['email'] ?? '')),
                 'acc_type' => isset($_POST['acc_type']) ? (int) $_POST['acc_type'] : 0,
                 'is_enabled' => isset($currentAccount['is_enabled']) ? (int) $currentAccount['is_enabled'] : 1,
+                'campus' => administrator_account_positive_int($_POST['campus'] ?? 0),
+                'programid' => administrator_account_positive_int($_POST['programid'] ?? 0),
             ];
             $editAccountId = (int) $selectedAccount['accountid'];
         } else {
@@ -344,7 +461,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 try {
     $pdo = Database::connection();
-    Database::ensureAccountStatusColumn();
+    Database::ensureAccountCoordinatorColumns();
+
+    $campusOptions = $pdo->query(
+        'SELECT campusid, campusname
+         FROM tblcampus
+         ORDER BY campusname ASC, campusid ASC'
+    )->fetchAll();
+
+    foreach ($campusOptions as $campusOption) {
+        $campusOptionId = isset($campusOption['campusid']) ? (int) $campusOption['campusid'] : 0;
+
+        if ($campusOptionId > 0) {
+            $campusOptionMap[$campusOptionId] = administrator_account_campus_label($campusOption);
+        }
+    }
+
+    $programOptions = $pdo->query(
+        "SELECT course.courseid AS programid,
+                course.coursecode,
+                course.coursedescription,
+                course.coursemajor,
+                CAST(NULLIF(TRIM(COALESCE(college.collegecampus, '')), '') AS UNSIGNED) AS campusid,
+                campus.campusname
+         FROM tblcourse course
+         LEFT JOIN tblcollege college
+           ON college.collegeid = CAST(NULLIF(TRIM(COALESCE(course.coursecollege, '')), '') AS UNSIGNED)
+         LEFT JOIN tblcampus campus
+           ON campus.campusid = CAST(NULLIF(TRIM(COALESCE(college.collegecampus, '')), '') AS UNSIGNED)
+         ORDER BY campus.campusname ASC, course.coursecode ASC, course.coursedescription ASC, course.courseid ASC"
+    )->fetchAll();
+
+    foreach ($programOptions as $programOption) {
+        $programOptionId = isset($programOption['programid']) ? (int) $programOption['programid'] : 0;
+
+        if ($programOptionId > 0) {
+            $programOptionMap[$programOptionId] = administrator_account_program_label($programOption);
+            $programCampusMap[$programOptionId] = administrator_account_positive_int($programOption['campusid'] ?? 0);
+        }
+    }
 
     foreach ($pdo->query('SELECT acc_type, COUNT(*) AS total FROM tblaccount GROUP BY acc_type') as $roleOption) {
         $roleKey = (string) $roleOption['acc_type'];
@@ -395,10 +550,22 @@ try {
     $offset = ($page - 1) * $perPage;
 
     $listStatement = $pdo->prepare(
-        'SELECT accountid, acc_name, email, acc_type, is_enabled
-         FROM tblaccount'
+        "SELECT account.accountid,
+                account.acc_name,
+                account.email,
+                account.acc_type,
+                account.is_enabled,
+                account.campus,
+                account.programid,
+                campus.campusname,
+                course.coursecode,
+                course.coursedescription,
+                course.coursemajor
+         FROM tblaccount account
+         LEFT JOIN tblcampus campus ON campus.campusid = account.campus
+         LEFT JOIN tblcourse course ON course.courseid = account.programid"
         . $whereClause .
-        ' ORDER BY accountid ASC
+        ' ORDER BY account.accountid ASC
           LIMIT :limit OFFSET :offset'
     );
 
@@ -635,6 +802,11 @@ $extraStyles = '
   color: #767676;
 }
 
+.accounts-table-title {
+  color: #171717;
+  font-weight: 700;
+}
+
 .accounts-role-badge {
   min-width: 110px;
   padding: 7px 12px;
@@ -860,6 +1032,8 @@ ob_start();
         <?php if ($selectedAccount !== null): ?>
           <?php $selectedAccountEnabled = administrator_account_is_enabled($selectedAccount); ?>
           <?php $selectedAccountIsCurrent = administrator_account_is_current($selectedAccount, $currentAccountId); ?>
+          <?php $selectedCampusId = administrator_account_positive_int($selectedAccount['campus'] ?? 0); ?>
+          <?php $selectedProgramId = administrator_account_positive_int($selectedAccount['programid'] ?? 0); ?>
           <article class="white-block accounts-editor">
             <div class="accounts-editor-heading">
               <div>
@@ -919,6 +1093,34 @@ ob_start();
                       </option>
                     <?php endforeach; ?>
                   </select>
+                </label>
+
+                <label class="form-label-wrapper">
+                  <span class="form-label">Assigned Campus</span>
+                  <select class="accounts-select" name="campus">
+                    <option value="">No campus assigned</option>
+                    <?php foreach ($campusOptions as $campusOption): ?>
+                      <?php $campusOptionId = isset($campusOption['campusid']) ? (int) $campusOption['campusid'] : 0; ?>
+                      <option value="<?= e((string) $campusOptionId); ?>"<?= $campusOptionId === $selectedCampusId ? ' selected' : ''; ?>>
+                        <?= e(administrator_account_campus_label($campusOption)); ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                  <span class="accounts-field-note">Required for research coordinator accounts.</span>
+                </label>
+
+                <label class="form-label-wrapper">
+                  <span class="form-label">Assigned Program</span>
+                  <select class="accounts-select" name="programid">
+                    <option value="">No specific program</option>
+                    <?php foreach ($programOptions as $programOption): ?>
+                      <?php $programOptionId = isset($programOption['programid']) ? (int) $programOption['programid'] : 0; ?>
+                      <option value="<?= e((string) $programOptionId); ?>"<?= $programOptionId === $selectedProgramId ? ' selected' : ''; ?>>
+                        <?= e(administrator_account_program_label($programOption)); ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                  <span class="accounts-field-note">Optional. If set, it must belong to the assigned campus.</span>
                 </label>
               </div>
 
@@ -988,6 +1190,7 @@ ob_start();
                 <th>Account Name</th>
                 <th>Email</th>
                 <th>Role</th>
+                <th>Campus Scope</th>
                 <th>Status</th>
                 <th>Action</th>
               </tr>
@@ -995,7 +1198,7 @@ ob_start();
             <tbody>
               <?php if ($accounts === []): ?>
                 <tr>
-                  <td class="accounts-empty" colspan="6">No accounts matched the current filters.</td>
+                  <td class="accounts-empty" colspan="7">No accounts matched the current filters.</td>
                 </tr>
               <?php endif; ?>
 
@@ -1007,6 +1210,11 @@ ob_start();
                 $initial = administrator_account_initial($name);
                 $isEnabled = administrator_account_is_enabled($record);
                 $isCurrentAccount = administrator_account_is_current($record, $currentAccountId);
+                $recordCampusLabel = administrator_account_campus_label($record);
+                $recordProgramId = administrator_account_positive_int($record['programid'] ?? 0);
+                $recordProgramLabel = $recordProgramId > 0
+                    ? administrator_account_program_label($record)
+                    : 'All programs in campus';
                 $editUrl = administrator_accounts_url(administrator_account_navigation_params(
                     $search,
                     $roleFilter,
@@ -1028,6 +1236,10 @@ ob_start();
                     <span class="accounts-role-badge <?= e(administrator_account_role_badge_class($roleCode)); ?>">
                       <?= e(administrator_account_role_label($roleCode)); ?>
                     </span>
+                  </td>
+                  <td>
+                    <div class="accounts-table-title"><?= e($recordCampusLabel); ?></div>
+                    <div class="accounts-muted"><?= e($recordProgramLabel); ?></div>
                   </td>
                   <td>
                     <span class="<?= e($isEnabled ? 'badge-active' : 'badge-disabled'); ?>">

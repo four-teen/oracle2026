@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/app/bootstrap.php';
 
+Auth::requireAdmin();
+
 function administrator_title_similarity_url(array $parameters = []): string
 {
     $query = http_build_query($parameters, '', '&');
@@ -126,6 +128,38 @@ function administrator_title_similarity_navigation_params(
     return $parameters;
 }
 
+function administrator_title_similarity_pagination_pages(int $currentPage, int $totalPages): array
+{
+    if ($totalPages <= 9) {
+        return range(1, max(1, $totalPages));
+    }
+
+    $pages = [1, 2, $totalPages - 1, $totalPages];
+
+    for ($pageNumber = $currentPage - 2; $pageNumber <= $currentPage + 2; $pageNumber++) {
+        if ($pageNumber > 1 && $pageNumber < $totalPages) {
+            $pages[] = $pageNumber;
+        }
+    }
+
+    $pages = array_values(array_unique($pages));
+    sort($pages);
+
+    $result = [];
+    $previousPage = 0;
+
+    foreach ($pages as $pageNumber) {
+        if ($previousPage > 0 && $pageNumber > $previousPage + 1) {
+            $result[] = 'ellipsis';
+        }
+
+        $result[] = $pageNumber;
+        $previousPage = $pageNumber;
+    }
+
+    return $result;
+}
+
 $search = trim((string) ($_GET['q'] ?? ''));
 $reviewFilter = trim((string) ($_GET['review'] ?? ''));
 $bucketFilter = trim((string) ($_GET['bucket'] ?? ''));
@@ -166,7 +200,18 @@ $latestComputedAt = '';
 $bestAlgorithm = null;
 $perPage = 20;
 $totalPages = 1;
+$filteredCount = 0;
+$filteredReviewedCount = 0;
+$filteredPendingCount = 0;
 $filteredPairs = [];
+$pageReviewProgress = [];
+$currentPageProgress = [
+    'total' => 0,
+    'reviewed' => 0,
+    'pending' => 0,
+];
+$nextPendingPage = 0;
+$reviewCompletionPercent = 0;
 $currentUserReviewMap = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -362,14 +407,58 @@ try {
         $filteredPairs[] = $pairRecord;
     }
 
-    $filteredCount = count($filteredPairs);
+    $filteredPairsAll = $filteredPairs;
+    $filteredCount = count($filteredPairsAll);
     $totalPages = max(1, (int) ceil($filteredCount / $perPage));
 
     if ($page > $totalPages) {
         $page = $totalPages;
     }
 
-    $filteredPairs = array_slice($filteredPairs, ($page - 1) * $perPage, $perPage);
+    foreach ($filteredPairsAll as $pairIndex => $pairRecord) {
+        $pageNumber = (int) floor($pairIndex / $perPage) + 1;
+
+        if (!isset($pageReviewProgress[$pageNumber])) {
+            $pageReviewProgress[$pageNumber] = [
+                'total' => 0,
+                'reviewed' => 0,
+                'pending' => 0,
+            ];
+        }
+
+        $pageReviewProgress[$pageNumber]['total']++;
+
+        if ((int) ($pairRecord['review_summary']['total_reviews'] ?? 0) > 0) {
+            $pageReviewProgress[$pageNumber]['reviewed']++;
+            $filteredReviewedCount++;
+        } else {
+            $pageReviewProgress[$pageNumber]['pending']++;
+            $filteredPendingCount++;
+        }
+    }
+
+    $currentPageProgress = $pageReviewProgress[$page] ?? $currentPageProgress;
+    $reviewCompletionPercent = $filteredCount > 0
+        ? (int) round(($filteredReviewedCount / max($filteredCount, 1)) * 100)
+        : 0;
+
+    for ($candidatePage = $page; $candidatePage <= $totalPages; $candidatePage++) {
+        if ((int) ($pageReviewProgress[$candidatePage]['pending'] ?? 0) > 0) {
+            $nextPendingPage = $candidatePage;
+            break;
+        }
+    }
+
+    if ($nextPendingPage === 0) {
+        for ($candidatePage = 1; $candidatePage < $page; $candidatePage++) {
+            if ((int) ($pageReviewProgress[$candidatePage]['pending'] ?? 0) > 0) {
+                $nextPendingPage = $candidatePage;
+                break;
+            }
+        }
+    }
+
+    $filteredPairs = array_slice($filteredPairsAll, ($page - 1) * $perPage, $perPage);
 
     if ($selectedPair !== null) {
         $reviewHistoryStatement = $pdo->prepare(
@@ -621,6 +710,22 @@ $extraStyles = <<<'CSS'
 .title-similarity-btn.primary { background: linear-gradient(135deg, #696cff, #5f61e6); color: #fff; box-shadow: 0 14px 28px rgba(105, 108, 255, 0.28); }
 .title-similarity-btn.secondary { background: rgba(105, 108, 255, 0.12); color: #4f58d8; }
 .title-similarity-btn.outline { background: #fff; color: #566a7f; border: 1px solid rgba(105, 108, 255, 0.18); }
+.title-similarity-review-tracker { display: grid; gap: 16px; margin: 18px 0; padding: 18px; border: 1px solid #edf1f7; border-radius: 18px; background: #f9fafc; }
+.title-similarity-review-tracker-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.title-similarity-review-tracker-title { margin: 0; font-size: 16px; font-weight: 800; color: #233255; }
+.title-similarity-review-tracker-copy { margin: 6px 0 0; color: #697a8d; font-size: 13px; line-height: 1.6; }
+.title-similarity-review-tracker-stats { display: flex; gap: 10px; flex-wrap: wrap; }
+.title-similarity-review-stat { display: grid; gap: 2px; min-width: 112px; padding: 12px 14px; border-radius: 14px; background: #fff; border: 1px solid #edf1f7; }
+.title-similarity-review-stat strong { color: #233255; font-size: 18px; line-height: 1.15; }
+.title-similarity-review-stat span { color: #8592a3; font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.title-similarity-progress-bar { overflow: hidden; height: 10px; border-radius: 999px; background: #e9edf5; }
+.title-similarity-progress-fill { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #28c76f, #00a7a5); }
+.title-similarity-review-legend { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: #697a8d; font-size: 12px; font-weight: 700; }
+.title-similarity-review-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.title-similarity-review-legend span::before { content: ''; width: 8px; height: 8px; border-radius: 999px; background: #d7dce8; }
+.title-similarity-review-legend .done::before { background: #28c76f; }
+.title-similarity-review-legend .partial::before { background: #ffab00; }
+.title-similarity-review-legend .pending::before { background: #d7dce8; }
 .title-similarity-metric-table,
 .title-similarity-record-table { overflow: hidden; }
 .title-similarity-table { width: 100%; margin: 0; border-collapse: collapse; }
@@ -644,8 +749,17 @@ $extraStyles = <<<'CSS'
 .title-similarity-empty { padding: 44px 24px; text-align: center; color: #8592a3; font-size: 15px; }
 .title-similarity-pagination { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
 .title-similarity-pagination a,
-.title-similarity-pagination span { display: inline-flex; align-items: center; justify-content: center; min-width: 42px; min-height: 42px; padding: 0 12px; border-radius: 14px; background: #fff; border: 1px solid rgba(105, 108, 255, 0.14); color: #566a7f; text-decoration: none; font-size: 14px; font-weight: 700; }
-.title-similarity-pagination span.active { background: #696cff; border-color: #696cff; color: #fff; }
+.title-similarity-pagination span { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 42px; min-height: 42px; padding: 0 12px; border-radius: 14px; background: #fff; border: 1px solid rgba(105, 108, 255, 0.14); color: #566a7f; text-decoration: none; font-size: 14px; font-weight: 700; }
+.title-similarity-pagination .active { background: #696cff; border-color: #696cff; color: #fff; box-shadow: 0 10px 24px rgba(105, 108, 255, 0.26); }
+.title-similarity-pagination .is-complete:not(.active) { background: rgba(40, 199, 111, 0.1); border-color: rgba(40, 199, 111, 0.28); color: #146c43; }
+.title-similarity-pagination .is-partial:not(.active) { background: rgba(255, 171, 0, 0.12); border-color: rgba(255, 171, 0, 0.34); color: #8a5f00; }
+.title-similarity-pagination .is-pending:not(.active) { background: #fff; }
+.title-similarity-pagination .is-complete::after,
+.title-similarity-pagination .is-partial::after,
+.title-similarity-pagination .is-pending::after { content: ''; position: absolute; right: 7px; bottom: 6px; width: 7px; height: 7px; border-radius: 999px; background: #d7dce8; box-shadow: 0 0 0 2px #fff; }
+.title-similarity-pagination .is-complete::after { background: #28c76f; }
+.title-similarity-pagination .is-partial::after { background: #ffab00; }
+.title-similarity-pagination .ellipsis { min-width: 28px; padding: 0 4px; border: 0; background: transparent; color: #a8b1c2; }
 .title-similarity-guides { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .title-similarity-guide-card { padding: 18px; border-radius: 18px; background: linear-gradient(180deg, #f7f9ff 0%, #fff 100%); border: 1px solid rgba(105, 108, 255, 0.12); }
 .title-similarity-guide-card h4 { margin: 0 0 8px; font-size: 16px; font-weight: 800; color: #233255; }
@@ -686,6 +800,7 @@ $extraStyles = <<<'CSS'
   .title-similarity-filter-form select,
   .title-similarity-btn,
   .title-similarity-search-shell { width: 100%; }
+  .title-similarity-review-stat { flex: 1 1 130px; }
   .title-similarity-score-grid { grid-template-columns: 1fr; }
 }
 CSS;
@@ -853,6 +968,64 @@ ob_start();
         </form>
       </div>
 
+      <?php
+      $visibleStart = $filteredCount > 0 ? (($page - 1) * $perPage) + 1 : 0;
+      $visibleEnd = $filteredCount > 0 ? min($filteredCount, $page * $perPage) : 0;
+      $nextPendingParams = $nextPendingPage > 0
+          ? array_merge($persistedFilters, ['page' => $nextPendingPage])
+          : [];
+      $pendingOnlyParams = administrator_title_similarity_navigation_params($search, 'pending', $bucketFilter, 1);
+      ?>
+      <div class="title-similarity-review-tracker">
+        <div class="title-similarity-review-tracker-top">
+          <div>
+            <p class="title-similarity-review-tracker-title">Review tracker</p>
+            <p class="title-similarity-review-tracker-copy">
+              Showing <?= e(number_format($visibleStart)); ?>-<?= e(number_format($visibleEnd)); ?> of <?= e(number_format($filteredCount)); ?> pair(s).
+              Page <?= e((string) $page); ?> has <?= e(number_format((int) $currentPageProgress['pending'])); ?> left to review.
+            </p>
+          </div>
+
+          <div class="title-similarity-actions">
+            <?php if ($filteredPendingCount > 0): ?>
+              <a class="title-similarity-btn secondary" href="<?= e(administrator_title_similarity_url($pendingOnlyParams)); ?>"><i class="bx bx-filter-alt"></i> Pending Only</a>
+            <?php endif; ?>
+            <?php if ($nextPendingPage > 0): ?>
+              <a class="title-similarity-btn outline" href="<?= e(administrator_title_similarity_url($nextPendingParams)); ?>"><i class="bx bx-skip-next"></i> <?= e($nextPendingPage === $page ? 'Continue This Page' : 'Next Unfinished Page'); ?></a>
+            <?php endif; ?>
+          </div>
+        </div>
+
+        <div class="title-similarity-review-tracker-stats">
+          <div class="title-similarity-review-stat">
+            <strong><?= e(number_format($filteredReviewedCount)); ?></strong>
+            <span>Reviewed</span>
+          </div>
+          <div class="title-similarity-review-stat">
+            <strong><?= e(number_format($filteredPendingCount)); ?></strong>
+            <span>Pending</span>
+          </div>
+          <div class="title-similarity-review-stat">
+            <strong><?= e(number_format($reviewCompletionPercent)); ?>%</strong>
+            <span>Complete</span>
+          </div>
+          <div class="title-similarity-review-stat">
+            <strong><?= e(number_format((int) $currentPageProgress['reviewed'])); ?>/<?= e(number_format((int) $currentPageProgress['total'])); ?></strong>
+            <span>This Page</span>
+          </div>
+        </div>
+
+        <div class="title-similarity-progress-bar" aria-hidden="true">
+          <span class="title-similarity-progress-fill" style="width: <?= e((string) max(0, min(100, $reviewCompletionPercent))); ?>%;"></span>
+        </div>
+
+        <div class="title-similarity-review-legend">
+          <span class="done">Done page</span>
+          <span class="partial">Partly reviewed</span>
+          <span class="pending">Not started</span>
+        </div>
+      </div>
+
       <div class="title-similarity-record-table">
         <table class="title-similarity-table">
           <thead>
@@ -940,13 +1113,31 @@ ob_start();
             <a href="<?= e(administrator_title_similarity_url(array_merge($persistedFilters, ['page' => $page - 1]))); ?>">Previous</a>
           <?php endif; ?>
 
-          <?php for ($pageNumber = 1; $pageNumber <= $totalPages; $pageNumber++): ?>
-            <?php if ($pageNumber === $page): ?>
-              <span class="active"><?= e((string) $pageNumber); ?></span>
+          <?php foreach (administrator_title_similarity_pagination_pages($page, $totalPages) as $paginationItem): ?>
+            <?php if ($paginationItem === 'ellipsis'): ?>
+              <span class="ellipsis">...</span>
             <?php else: ?>
-              <a href="<?= e(administrator_title_similarity_url(array_merge($persistedFilters, ['page' => $pageNumber]))); ?>"><?= e((string) $pageNumber); ?></a>
+              <?php
+              $pageNumber = (int) $paginationItem;
+              $pageProgress = $pageReviewProgress[$pageNumber] ?? ['total' => 0, 'reviewed' => 0, 'pending' => 0];
+              $pageStateClass = 'is-pending';
+
+              if ((int) $pageProgress['total'] > 0 && (int) $pageProgress['pending'] === 0) {
+                  $pageStateClass = 'is-complete';
+              } elseif ((int) $pageProgress['reviewed'] > 0) {
+                  $pageStateClass = 'is-partial';
+              }
+
+              $pageTitle = number_format((int) $pageProgress['reviewed']) . ' reviewed, '
+                  . number_format((int) $pageProgress['pending']) . ' pending';
+              ?>
+              <?php if ($pageNumber === $page): ?>
+                <span class="active <?= e($pageStateClass); ?>" title="<?= e($pageTitle); ?>"><?= e((string) $pageNumber); ?></span>
+              <?php else: ?>
+                <a class="<?= e($pageStateClass); ?>" title="<?= e($pageTitle); ?>" href="<?= e(administrator_title_similarity_url(array_merge($persistedFilters, ['page' => $pageNumber]))); ?>"><?= e((string) $pageNumber); ?></a>
+              <?php endif; ?>
             <?php endif; ?>
-          <?php endfor; ?>
+          <?php endforeach; ?>
 
           <?php if ($page < $totalPages): ?>
             <a href="<?= e(administrator_title_similarity_url(array_merge($persistedFilters, ['page' => $page + 1]))); ?>">Next</a>

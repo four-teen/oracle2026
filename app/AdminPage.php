@@ -6,7 +6,7 @@ final class AdminPage
 {
     public static function render(array $options = []): void
     {
-        Auth::requireLogin();
+        Auth::requireAdmin();
 
         $title = isset($options['title']) ? (string) $options['title'] : 'Administrator';
         $currentPage = isset($options['current_page']) ? (string) $options['current_page'] : 'dashboard';

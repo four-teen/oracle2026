@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/app/bootstrap.php';
 
+Auth::requireAdmin();
+
 if (!isset($referenceManagerEntity) || !is_string($referenceManagerEntity)) {
     throw new RuntimeException('Reference management entity is missing.');
 }
