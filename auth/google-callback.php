@@ -56,7 +56,11 @@ try {
         'picture' => isset($profile['picture']) ? (string) $profile['picture'] : '',
     ]);
 
-    redirect(Auth::defaultWorkspaceUrl($account));
+    if (Auth::isRoleSelectionRequired()) {
+        redirect(app_link('auth/select-role.php'));
+    }
+
+    redirect(Auth::defaultWorkspaceUrl());
 } catch (PDOException $exception) {
     set_flash('auth_error', 'Database query failed. Verify your tblaccount structure and database settings.');
     redirect(app_link());

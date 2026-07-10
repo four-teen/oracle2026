@@ -5,7 +5,13 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/app/bootstrap.php';
 
 if (Auth::check()) {
-    redirect(app_link('administrator/'));
+    Auth::requireLogin();
+
+    if (Auth::isRoleSelectionRequired()) {
+        redirect(app_link('auth/select-role.php'));
+    }
+
+    redirect(Auth::defaultWorkspaceUrl());
 }
 
 $missingConfiguration = GoogleOAuth::missingConfiguration();
