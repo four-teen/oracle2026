@@ -116,6 +116,7 @@ final class Database
     public static function ensureAccountCoordinatorColumns(): void
     {
         self::ensureAccountStatusColumn();
+        self::ensureAccountRoleColumns();
         self::ensureCampusTable();
         self::ensureCourseTable();
 
@@ -163,6 +164,158 @@ final class Database
 
         self::$accountColumns = null;
         unset(self::$tableColumns['tblaccount']);
+    }
+
+    public static function ensureAccountRoleColumns(): void
+    {
+        self::ensureAccountStatusColumn();
+
+        $accountColumns = self::tableColumns('tblaccount');
+
+        if (!in_array('acc_roles', $accountColumns, true)) {
+            self::connection()->exec(
+                'ALTER TABLE tblaccount
+                 ADD COLUMN acc_roles VARCHAR(100) NULL AFTER acc_type'
+            );
+            self::$accountColumns = null;
+            unset(self::$tableColumns['tblaccount']);
+            $accountColumns = self::tableColumns('tblaccount');
+        }
+
+        self::ensureColumnType('tblaccount', 'acc_roles', 'VARCHAR(100)', true);
+
+        self::connection()->exec(
+            "UPDATE tblaccount
+             SET acc_roles = CAST(acc_type AS CHAR)
+             WHERE acc_roles IS NULL
+                OR TRIM(acc_roles) = ''"
+        );
+
+        self::$accountColumns = null;
+        unset(self::$tableColumns['tblaccount']);
+    }
+
+    public static function ensureExtensionProjectTables(): void
+    {
+        self::ensureAccountCoordinatorColumns();
+
+        $accountIdType = self::columnType('tblaccount', 'accountid') ?? 'INT';
+
+        self::connection()->exec(
+            'CREATE TABLE IF NOT EXISTS tblextension_projects (
+                extension_projectid INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                project_title VARCHAR(255) NOT NULL,
+                program_title VARCHAR(255) NULL,
+                project_leader_name VARCHAR(150) NULL,
+                co_project_leader_name VARCHAR(150) NULL,
+                source_fund VARCHAR(100) NULL,
+                total_budget DECIMAL(12,2) NULL,
+                start_date DATE NULL,
+                end_date DATE NULL,
+                duration_months INT NULL,
+                cooperating_agency VARCHAR(255) NULL,
+                sdgs VARCHAR(100) NULL,
+                status VARCHAR(30) NOT NULL DEFAULT \'Draft\',
+                summary TEXT NULL,
+                literature_review TEXT NULL,
+                methodology TEXT NULL,
+                counterpart_support TEXT NULL,
+                expected_outputs TEXT NULL,
+                attachment_file_path VARCHAR(255) NULL,
+                attachment_original_name VARCHAR(255) NULL,
+                created_by ' . $accountIdType . ' NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                KEY idx_tblextension_projects_status (status),
+                KEY idx_tblextension_projects_created_by (created_by),
+                KEY idx_tblextension_projects_start_date (start_date)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+
+        $projectColumns = self::tableColumns('tblextension_projects');
+        $projectColumnStatements = [
+            'literature_review' => 'ALTER TABLE tblextension_projects ADD COLUMN literature_review TEXT NULL AFTER summary',
+            'methodology' => 'ALTER TABLE tblextension_projects ADD COLUMN methodology TEXT NULL AFTER literature_review',
+            'attachment_file_path' => 'ALTER TABLE tblextension_projects ADD COLUMN attachment_file_path VARCHAR(255) NULL AFTER expected_outputs',
+            'attachment_original_name' => 'ALTER TABLE tblextension_projects ADD COLUMN attachment_original_name VARCHAR(255) NULL AFTER attachment_file_path',
+        ];
+
+        foreach ($projectColumnStatements as $column => $statement) {
+            if (!in_array($column, $projectColumns, true)) {
+                self::connection()->exec($statement);
+                unset(self::$tableColumns['tblextension_projects']);
+                $projectColumns = self::tableColumns('tblextension_projects');
+            }
+        }
+
+        self::connection()->exec(
+            'CREATE TABLE IF NOT EXISTS tblextension_project_components (
+                extension_componentid INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                extension_projectid INT UNSIGNED NOT NULL,
+                component_title VARCHAR(255) NOT NULL,
+                component_leader_name VARCHAR(150) NULL,
+                expected_output TEXT NULL,
+                sort_order INT NOT NULL DEFAULT 0,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                KEY idx_tblextension_components_project (extension_projectid)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+
+        self::ensureForeignKey(
+            'tblextension_project_components',
+            'fk_tblextension_components_project',
+            'extension_projectid',
+            'tblextension_projects',
+            'extension_projectid',
+            'CASCADE'
+        );
+
+        self::connection()->exec(
+            'CREATE TABLE IF NOT EXISTS tblextension_project_studies (
+                extension_studyid INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                extension_projectid INT UNSIGNED NOT NULL,
+                study_title VARCHAR(255) NOT NULL,
+                study_leader_name VARCHAR(255) NULL,
+                rationale TEXT NULL,
+                study_note TEXT NULL,
+                general_objective TEXT NULL,
+                specific_objectives TEXT NULL,
+                methodology TEXT NULL,
+                methodology_process TEXT NULL,
+                counterpart_support TEXT NULL,
+                expected_outputs TEXT NULL,
+                sort_order INT NOT NULL DEFAULT 0,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                KEY idx_tblextension_studies_project (extension_projectid)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+
+        $studyColumns = self::tableColumns('tblextension_project_studies');
+        $studyColumnStatements = [
+            'study_note' => 'ALTER TABLE tblextension_project_studies ADD COLUMN study_note TEXT NULL AFTER rationale',
+            'general_objective' => 'ALTER TABLE tblextension_project_studies ADD COLUMN general_objective TEXT NULL AFTER study_note',
+            'specific_objectives' => 'ALTER TABLE tblextension_project_studies ADD COLUMN specific_objectives TEXT NULL AFTER general_objective',
+            'methodology_process' => 'ALTER TABLE tblextension_project_studies ADD COLUMN methodology_process TEXT NULL AFTER methodology',
+            'counterpart_support' => 'ALTER TABLE tblextension_project_studies ADD COLUMN counterpart_support TEXT NULL AFTER methodology_process',
+        ];
+
+        foreach ($studyColumnStatements as $column => $statement) {
+            if (!in_array($column, $studyColumns, true)) {
+                self::connection()->exec($statement);
+                unset(self::$tableColumns['tblextension_project_studies']);
+                $studyColumns = self::tableColumns('tblextension_project_studies');
+            }
+        }
+
+        self::ensureForeignKey(
+            'tblextension_project_studies',
+            'fk_tblextension_studies_project',
+            'extension_projectid',
+            'tblextension_projects',
+            'extension_projectid',
+            'CASCADE'
+        );
     }
 
     public static function ensureResearchTypeTable(): void
@@ -685,6 +838,7 @@ final class Database
             'acc_name',
             'email',
             'acc_type',
+            'acc_roles',
             'is_enabled',
             'campus',
             'programid',

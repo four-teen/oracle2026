@@ -2163,7 +2163,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
       <div class="container-xxl nav-shell">
         <a href="<?= e(app_link()); ?>" class="brand-lockup">
           <span class="brand-mark">
-            <i class="bx bx-library"></i>
+            <i class="bx bx-network-chart"></i>
           </span>
           <span>
             <span class="brand-title">Oracle</span>

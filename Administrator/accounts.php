@@ -11,6 +11,7 @@ function administrator_account_role_map(): array
     return [
         1 => 'Administrator',
         2 => 'Research Coordinator',
+        5 => 'Extension Coordinator',
         3 => 'Student',
         4 => 'Professor',
         0 => 'User',
@@ -32,6 +33,8 @@ function administrator_account_role_badge_class($value): string
             return 'accounts-role-admin';
         case 2:
             return 'accounts-role-staff';
+        case 5:
+            return 'accounts-role-extension';
         case 3:
             return 'accounts-role-student';
         case 4:
@@ -41,6 +44,54 @@ function administrator_account_role_badge_class($value): string
         default:
             return 'accounts-role-unknown';
     }
+}
+
+function administrator_account_role_ids($value, ?int $primaryRole = null): array
+{
+    $roleMap = administrator_account_role_map();
+    $rawRoles = [];
+
+    if (is_array($value)) {
+        $rawRoles = $value;
+    } else {
+        $normalized = trim((string) $value);
+
+        if ($normalized !== '') {
+            $rawRoles = preg_split('/\s*,\s*/', $normalized);
+            $rawRoles = is_array($rawRoles) ? $rawRoles : [];
+        }
+    }
+
+    if ($primaryRole !== null) {
+        $rawRoles[] = (string) $primaryRole;
+    }
+
+    $roles = [];
+
+    foreach ($rawRoles as $rawRole) {
+        if (is_array($rawRole)) {
+            continue;
+        }
+
+        $role = trim((string) $rawRole);
+
+        if ($role === '' || !preg_match('/^-?\d+$/', $role)) {
+            continue;
+        }
+
+        $roleId = (int) $role;
+
+        if (array_key_exists($roleId, $roleMap)) {
+            $roles[$roleId] = $roleId;
+        }
+    }
+
+    return array_values($roles);
+}
+
+function administrator_account_role_storage(array $roles): string
+{
+    return implode(',', array_map('strval', $roles));
 }
 
 function administrator_account_status_label(bool $isEnabled): string
@@ -270,6 +321,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $email = trim((string) ($_POST['email'] ?? ''));
             $roleInput = trim((string) ($_POST['acc_type'] ?? ''));
             $roleId = (int) $roleInput;
+            $roleIds = administrator_account_role_ids($_POST['acc_roles'] ?? [], $roleId);
             $campusId = administrator_account_positive_int($_POST['campus'] ?? 0);
             $programId = administrator_account_positive_int($_POST['programid'] ?? 0);
 
@@ -293,8 +345,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Select a valid role.');
             }
 
-            if ($roleId === Auth::ROLE_RESEARCH_COORDINATOR && $campusId < 1) {
+            if ($roleIds === []) {
+                throw new RuntimeException('Assign at least one login role.');
+            }
+
+            if (!in_array($roleId, $roleIds, true)) {
+                $roleIds[] = $roleId;
+            }
+
+            $roleIds = administrator_account_role_ids($roleIds);
+
+            if (in_array(Auth::ROLE_RESEARCH_COORDINATOR, $roleIds, true) && $campusId < 1) {
                 throw new RuntimeException('Assign a campus to every research coordinator account.');
+            }
+
+            if (
+                $accountId === $currentAccountId
+                && !in_array(Auth::role(), $roleIds, true)
+            ) {
+                throw new RuntimeException('Keep your current session role assigned to this account before saving.');
             }
 
             if ($campusId > 0) {
@@ -368,6 +437,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  SET acc_name = :acc_name,
                      email = :email,
                      acc_type = :acc_type,
+                     acc_roles = :acc_roles,
                      campus = :campus,
                      programid = :programid
                  WHERE accountid = :accountid'
@@ -375,6 +445,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $updateStatement->bindValue(':acc_name', $name);
             $updateStatement->bindValue(':email', $email);
             $updateStatement->bindValue(':acc_type', $roleId, PDO::PARAM_INT);
+            $updateStatement->bindValue(':acc_roles', administrator_account_role_storage($roleIds));
             $campusId > 0
                 ? $updateStatement->bindValue(':campus', $campusId, PDO::PARAM_INT)
                 : $updateStatement->bindValue(':campus', null, PDO::PARAM_NULL);
@@ -441,6 +512,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'acc_name' => trim((string) ($_POST['acc_name'] ?? '')),
                 'email' => trim((string) ($_POST['email'] ?? '')),
                 'acc_type' => isset($_POST['acc_type']) ? (int) $_POST['acc_type'] : 0,
+                'acc_roles' => administrator_account_role_storage(
+                    administrator_account_role_ids($_POST['acc_roles'] ?? [], isset($_POST['acc_type']) ? (int) $_POST['acc_type'] : 0)
+                ),
                 'is_enabled' => isset($currentAccount['is_enabled']) ? (int) $currentAccount['is_enabled'] : 1,
                 'campus' => administrator_account_positive_int($_POST['campus'] ?? 0),
                 'programid' => administrator_account_positive_int($_POST['programid'] ?? 0),
@@ -501,12 +575,16 @@ try {
         }
     }
 
-    foreach ($pdo->query('SELECT acc_type, COUNT(*) AS total FROM tblaccount GROUP BY acc_type') as $roleOption) {
-        $roleKey = (string) $roleOption['acc_type'];
+    $roleCountStatement = $pdo->prepare(
+        "SELECT COUNT(*)
+         FROM tblaccount
+         WHERE FIND_IN_SET(:role, COALESCE(NULLIF(TRIM(acc_roles), ''), CAST(acc_type AS CHAR))) > 0"
+    );
 
-        if (array_key_exists($roleKey, $roleCounts)) {
-            $roleCounts[$roleKey] = (int) $roleOption['total'];
-        }
+    foreach ($roleMap as $roleCode => $roleLabel) {
+        $roleCountStatement->bindValue(':role', (string) $roleCode);
+        $roleCountStatement->execute();
+        $roleCounts[(string) $roleCode] = (int) $roleCountStatement->fetchColumn();
     }
 
     $totalAccounts = (int) $pdo->query('SELECT COUNT(*) FROM tblaccount')->fetchColumn();
@@ -524,8 +602,8 @@ try {
     }
 
     if ($roleFilter !== '') {
-        $conditions[] = 'acc_type = :acc_type';
-        $params['acc_type'] = (int) $roleFilter;
+        $conditions[] = "FIND_IN_SET(:acc_role, COALESCE(NULLIF(TRIM(acc_roles), ''), CAST(acc_type AS CHAR))) > 0";
+        $params['acc_role'] = (string) ((int) $roleFilter);
     }
 
     if ($statusFilter === 'enabled') {
@@ -554,6 +632,7 @@ try {
                 account.acc_name,
                 account.email,
                 account.acc_type,
+                account.acc_roles,
                 account.is_enabled,
                 account.campus,
                 account.programid,
@@ -819,6 +898,45 @@ $extraStyles = '
   text-align: center;
 }
 
+.accounts-role-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.accounts-role-section {
+  grid-column: 1 / -1;
+}
+
+.accounts-role-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.accounts-role-check {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  color: #171717;
+  font-weight: 600;
+}
+
+.accounts-role-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
 .accounts-role-admin {
   color: #2f49d1;
   background-color: rgba(47, 73, 209, 0.12);
@@ -827,6 +945,11 @@ $extraStyles = '
 .accounts-role-staff {
   color: #237752;
   background-color: rgba(75, 222, 151, 0.14);
+}
+
+.accounts-role-extension {
+  color: #0369a1;
+  background-color: rgba(14, 165, 233, 0.14);
 }
 
 .accounts-role-student {
@@ -1032,6 +1155,7 @@ ob_start();
         <?php if ($selectedAccount !== null): ?>
           <?php $selectedAccountEnabled = administrator_account_is_enabled($selectedAccount); ?>
           <?php $selectedAccountIsCurrent = administrator_account_is_current($selectedAccount, $currentAccountId); ?>
+          <?php $selectedRoleIds = administrator_account_role_ids($selectedAccount['acc_roles'] ?? '', (int) $selectedAccount['acc_type']); ?>
           <?php $selectedCampusId = administrator_account_positive_int($selectedAccount['campus'] ?? 0); ?>
           <?php $selectedProgramId = administrator_account_positive_int($selectedAccount['programid'] ?? 0); ?>
           <article class="white-block accounts-editor">
@@ -1085,7 +1209,7 @@ ob_start();
                 </label>
 
                 <label class="form-label-wrapper">
-                  <span class="form-label">Role</span>
+                  <span class="form-label">Primary Role</span>
                   <select class="accounts-select" name="acc_type" required>
                     <?php foreach ($roleMap as $roleCode => $roleLabel): ?>
                       <option value="<?= e((string) $roleCode); ?>"<?= (int) $selectedAccount['acc_type'] === $roleCode ? ' selected' : ''; ?>>
@@ -1094,6 +1218,24 @@ ob_start();
                     <?php endforeach; ?>
                   </select>
                 </label>
+
+                <div class="form-label-wrapper accounts-role-section">
+                  <span class="form-label">Login Roles</span>
+                  <div class="accounts-role-checks">
+                    <?php foreach ($roleMap as $roleCode => $roleLabel): ?>
+                      <label class="accounts-role-check">
+                        <input
+                          type="checkbox"
+                          name="acc_roles[]"
+                          value="<?= e((string) $roleCode); ?>"
+                          <?= in_array($roleCode, $selectedRoleIds, true) ? 'checked' : ''; ?>
+                        >
+                        <span><?= e($roleLabel); ?></span>
+                      </label>
+                    <?php endforeach; ?>
+                  </div>
+                  <span class="accounts-field-note">Accounts with multiple login roles will choose a workspace after signing in.</span>
+                </div>
 
                 <label class="form-label-wrapper">
                   <span class="form-label">Assigned Campus</span>
@@ -1106,7 +1248,7 @@ ob_start();
                       </option>
                     <?php endforeach; ?>
                   </select>
-                  <span class="accounts-field-note">Required for research coordinator accounts.</span>
+                  <span class="accounts-field-note">Required when Research Coordinator is one of the account login roles.</span>
                 </label>
 
                 <label class="form-label-wrapper">
@@ -1207,6 +1349,7 @@ ob_start();
                 $name = trim((string) $record['acc_name']);
                 $email = trim((string) $record['email']);
                 $roleCode = (int) $record['acc_type'];
+                $recordRoleIds = administrator_account_role_ids($record['acc_roles'] ?? '', $roleCode);
                 $initial = administrator_account_initial($name);
                 $isEnabled = administrator_account_is_enabled($record);
                 $isCurrentAccount = administrator_account_is_current($record, $currentAccountId);
@@ -1233,9 +1376,13 @@ ob_start();
                   </td>
                   <td class="accounts-email"><?= e($email); ?></td>
                   <td>
-                    <span class="accounts-role-badge <?= e(administrator_account_role_badge_class($roleCode)); ?>">
-                      <?= e(administrator_account_role_label($roleCode)); ?>
-                    </span>
+                    <div class="accounts-role-list">
+                      <?php foreach ($recordRoleIds as $recordRoleId): ?>
+                        <span class="accounts-role-badge <?= e(administrator_account_role_badge_class($recordRoleId)); ?>">
+                          <?= e(administrator_account_role_label($recordRoleId)); ?>
+                        </span>
+                      <?php endforeach; ?>
+                    </div>
                   </td>
                   <td>
                     <div class="accounts-table-title"><?= e($recordCampusLabel); ?></div>

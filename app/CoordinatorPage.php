@@ -378,7 +378,7 @@ final class CoordinatorPage
     <div class="coordinator-shell">
       <aside class="coordinator-sidebar">
         <a href="<?= e(app_link('coordinator/')); ?>" class="coordinator-brand">
-          <span class="coordinator-brand-mark"><i class="bx bx-library"></i></span>
+          <span class="coordinator-brand-mark"><i class="bx bx-network-chart"></i></span>
           <span>
             <span class="coordinator-brand-title">Oracle</span>
             <span class="coordinator-brand-subtitle">Research Coordinator</span>
