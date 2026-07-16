@@ -75,7 +75,9 @@ $roleCards = [
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Select Workspace | Oracle</title>
-  <link rel="icon" type="image/x-icon" href="<?= e(app_link('assets/img/favicon/favicon.png')); ?>">
+  <link rel="icon" type="image/png" sizes="64x64" href="<?= e(app_link('assets/img/favicon/oracle-favicon.png')); ?>">
+  <link rel="shortcut icon" type="image/x-icon" href="<?= e(app_link('assets/img/favicon/favicon.ico')); ?>">
+  <link rel="apple-touch-icon" sizes="180x180" href="<?= e(app_link('assets/img/favicon/apple-touch-icon.png')); ?>">
   <link rel="stylesheet" href="<?= e(app_link('assets/vendor/fonts/boxicons.css')); ?>">
   <style>
     * {
@@ -113,6 +115,23 @@ $roleCards = [
       justify-content: space-between;
       gap: 16px;
       flex-wrap: wrap;
+    }
+
+    .role-heading {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      flex: 1 1 520px;
+    }
+
+    .role-brand-logo {
+      width: 64px;
+      height: 64px;
+      display: block;
+      flex: 0 0 64px;
+      border-radius: 12px;
+      object-fit: cover;
+      box-shadow: 0 8px 20px rgba(21, 128, 61, 0.18);
     }
 
     .role-kicker {
@@ -246,6 +265,12 @@ $roleCards = [
       .role-user {
         text-align: left;
       }
+
+      .role-brand-logo {
+        width: 54px;
+        height: 54px;
+        flex-basis: 54px;
+      }
     }
   </style>
 </head>
@@ -253,10 +278,19 @@ $roleCards = [
   <main class="role-shell">
     <section class="role-panel" aria-labelledby="role-title">
       <header class="role-header">
-        <div>
-          <p class="role-kicker">Oracle Workspace</p>
-          <h1 class="role-title" id="role-title">Select your role</h1>
-          <p class="role-copy">This account has multiple roles. Choose the workspace you want to use for this session.</p>
+        <div class="role-heading">
+          <img
+            class="role-brand-logo"
+            src="<?= e(app_link('assets/img/branding/oracle-logo.png')); ?>"
+            alt="Oracle"
+            width="512"
+            height="512"
+          >
+          <div>
+            <p class="role-kicker">Oracle Workspace</p>
+            <h1 class="role-title" id="role-title">Select your role</h1>
+            <p class="role-copy">This account has multiple roles. Choose the workspace you want to use for this session.</p>
+          </div>
         </div>
         <div class="role-user">
           <?= e($name !== '' ? $name : 'Approved User'); ?>

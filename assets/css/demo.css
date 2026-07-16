@@ -8,9 +8,17 @@
   margin-top: 12px;
 }
 
-.app-brand-logo.demo svg {
-  width: 22px;
-  height: 38px;
+.app-brand-logo.demo {
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 2.5rem;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: url('../img/branding/oracle-logo.png') center / cover no-repeat;
+}
+
+.app-brand-logo.demo > svg {
+  display: none;
 }
 
 .app-brand-text.demo {
