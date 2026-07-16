@@ -24,7 +24,9 @@ final class ExtensionPage
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><?= e($title); ?></title>
   <meta name="description" content="Oracle extension coordinator workspace">
-  <link rel="icon" type="image/x-icon" href="<?= e(app_link('assets/img/favicon/favicon.png')); ?>">
+  <link rel="icon" type="image/png" sizes="64x64" href="<?= e(app_link('assets/img/favicon/oracle-favicon.png')); ?>">
+  <link rel="shortcut icon" type="image/x-icon" href="<?= e(app_link('assets/img/favicon/favicon.ico')); ?>">
+  <link rel="apple-touch-icon" sizes="180x180" href="<?= e(app_link('assets/img/favicon/apple-touch-icon.png')); ?>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -78,13 +80,18 @@ final class ExtensionPage
     .extension-brand-mark {
       width: 44px;
       height: 44px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
+      display: block;
+      flex: 0 0 44px;
       border-radius: 8px;
-      background: #0f766e;
-      color: #fff;
-      font-size: 23px;
+      overflow: hidden;
+      box-shadow: 0 5px 12px rgba(15, 118, 110, 0.18);
+    }
+
+    .extension-brand-mark img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
     }
 
     .extension-brand-title {
@@ -356,7 +363,15 @@ final class ExtensionPage
   <div class="extension-shell">
     <aside class="extension-sidebar">
       <a class="extension-brand" href="<?= e(app_link('extension/')); ?>">
-        <span class="extension-brand-mark"><i class="bx bx-network-chart"></i></span>
+        <span class="extension-brand-mark">
+          <img
+            src="<?= e(app_link('assets/img/branding/oracle-logo.png')); ?>"
+            alt=""
+            width="512"
+            height="512"
+            aria-hidden="true"
+          >
+        </span>
         <span>
           <span class="extension-brand-title">Oracle</span>
           <span class="extension-brand-note">Extension Coordinator</span>

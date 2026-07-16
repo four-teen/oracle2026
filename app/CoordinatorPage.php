@@ -40,7 +40,9 @@ final class CoordinatorPage
     />
     <title><?= e($title); ?></title>
     <meta name="description" content="Oracle research coordinator workspace" />
-    <link rel="icon" type="image/x-icon" href="<?= e(app_link('assets/img/favicon/favicon.png')); ?>" />
+    <link rel="icon" type="image/png" sizes="64x64" href="<?= e(app_link('assets/img/favicon/oracle-favicon.png')); ?>" />
+    <link rel="shortcut icon" type="image/x-icon" href="<?= e(app_link('assets/img/favicon/favicon.ico')); ?>" />
+    <link rel="apple-touch-icon" sizes="180x180" href="<?= e(app_link('assets/img/favicon/apple-touch-icon.png')); ?>" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -94,13 +96,18 @@ final class CoordinatorPage
       .coordinator-brand-mark {
         width: 2.75rem;
         height: 2.75rem;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
+        display: block;
+        flex: 0 0 2.75rem;
         border-radius: 0.85rem;
-        background: #15803d;
-        color: #ffffff;
-        font-size: 1.35rem;
+        overflow: hidden;
+        box-shadow: 0 0.3rem 0.75rem rgba(15, 118, 56, 0.18);
+      }
+
+      .coordinator-brand-mark img {
+        width: 100%;
+        height: 100%;
+        display: block;
+        object-fit: cover;
       }
 
       .coordinator-brand-title {
@@ -378,7 +385,15 @@ final class CoordinatorPage
     <div class="coordinator-shell">
       <aside class="coordinator-sidebar">
         <a href="<?= e(app_link('coordinator/')); ?>" class="coordinator-brand">
-          <span class="coordinator-brand-mark"><i class="bx bx-network-chart"></i></span>
+          <span class="coordinator-brand-mark">
+            <img
+              src="<?= e(app_link('assets/img/branding/oracle-logo.png')); ?>"
+              alt=""
+              width="512"
+              height="512"
+              aria-hidden="true"
+            />
+          </span>
           <span>
             <span class="coordinator-brand-title">Oracle</span>
             <span class="coordinator-brand-subtitle">Research Coordinator</span>
