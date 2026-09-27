@@ -2232,9 +2232,10 @@ ob_start();
                   id="coord-adviser-select"
                   class="coord-select2-single js-example-basic-single"
                   name="adviser_accountid"
-                  data-placeholder="Select adviser"
+                  data-placeholder="Select adviser or choose no adviser"
                 >
                   <option value=""></option>
+                  <option value="0"<?= $selectedAdviserAccountId === 0 ? ' selected' : ''; ?>>No adviser</option>
                   <?php $selectedAdviserOptionFound = false; ?>
                   <?php foreach ($adviserOptions as $adviserOption): ?>
                     <?php

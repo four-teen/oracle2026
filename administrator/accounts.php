@@ -711,6 +711,42 @@ $pageFiltersWithEditor = administrator_account_navigation_params(
     $editAccountId > 0 ? $editAccountId : null
 );
 
+$select2CssPath = dirname(__DIR__) . '/assets/vendor/libs/select2/select2.min.css';
+$select2JsPath = dirname(__DIR__) . '/assets/vendor/libs/select2/select2.min.js';
+$select2CssVersion = is_file($select2CssPath) ? (string) filemtime($select2CssPath) : '1';
+$select2JsVersion = is_file($select2JsPath) ? (string) filemtime($select2JsPath) : '1';
+
+$extraHead = '<link rel="stylesheet" href="'
+    . e(app_link('assets/vendor/libs/select2/select2.min.css') . '?v=' . $select2CssVersion)
+    . '" />';
+
+$extraScripts = '<script src="'
+    . e(app_link('assets/vendor/libs/select2/select2.min.js') . '?v=' . $select2JsVersion)
+    . '"></script>
+<script>
+  jQuery(function ($) {
+    var $programSelect = $(".accounts-program-select");
+
+    if ($programSelect.length === 0 || typeof $.fn.select2 !== "function") {
+      return;
+    }
+
+    $programSelect.select2({
+      width: "100%",
+      minimumResultsForSearch: 0,
+      dropdownParent: $programSelect.closest(".accounts-program-field")
+    });
+
+    $programSelect.on("select2:open", function () {
+      var searchInput = document.querySelector(".select2-container--open .select2-search__field");
+
+      if (searchInput) {
+        searchInput.placeholder = "Search programs...";
+      }
+    });
+  });
+</script>';
+
 $extraStyles = '
 .accounts-alert {
   padding: 16px 18px;
@@ -744,11 +780,28 @@ $extraStyles = '
 
 .accounts-filter-form .search-wrapper {
   min-width: 0;
+  height: 44px;
+  position: relative;
+  display: block;
 }
 
 .accounts-filter-form .search-wrapper .form-input {
   width: 100%;
+  height: 44px;
   margin-bottom: 0;
+  padding-left: 44px;
+}
+
+.accounts-filter-form .accounts-search-icon {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 14px;
+  width: 18px;
+  height: 18px;
+  color: #767676;
+  pointer-events: none;
+  transform: translateY(-50%);
 }
 
 .accounts-filter-form .form-input,
@@ -828,6 +881,64 @@ $extraStyles = '
   padding: 0 14px;
 }
 
+.accounts-program-field .select2-container {
+  width: 100% !important;
+}
+
+.accounts-program-field .select2-container--default .select2-selection--single {
+  height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background-color: #eff0f6;
+}
+
+.accounts-program-field .select2-container--default .select2-selection--single .select2-selection__rendered {
+  padding: 0 42px 0 14px;
+  color: #171717;
+  line-height: 44px;
+}
+
+.accounts-program-field .select2-container--default .select2-selection--single .select2-selection__arrow {
+  top: 0;
+  right: 8px;
+  height: 44px;
+}
+
+.accounts-program-field .select2-container--default.select2-container--focus .select2-selection--single,
+.accounts-program-field .select2-container--default.select2-container--open .select2-selection--single {
+  box-shadow: 0 0 0 2px rgba(47, 73, 209, 0.15);
+}
+
+.accounts-program-field .select2-dropdown {
+  border: 1px solid #dadbe4;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.accounts-program-field .select2-search--dropdown {
+  padding: 10px;
+}
+
+.accounts-program-field .select2-search__field {
+  border: 1px solid #dadbe4 !important;
+  border-radius: 6px;
+  padding: 8px 10px;
+  outline: 0;
+}
+
+.accounts-program-field .select2-search__field:focus {
+  border-color: #2f49d1 !important;
+  box-shadow: 0 0 0 2px rgba(47, 73, 209, 0.12);
+}
+
+.accounts-program-field .select2-results__option {
+  padding: 9px 12px;
+}
+
+.accounts-program-field .select2-results__option--highlighted[aria-selected] {
+  background-color: #2f49d1;
+}
+
 .accounts-editor-actions {
   display: flex;
   gap: 10px;
@@ -857,6 +968,22 @@ $extraStyles = '
   gap: 12px;
   color: #171717;
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.accounts-identity-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.accounts-table-account-name {
+  color: #171717;
+  font-weight: 700;
+  line-height: 1.35;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .accounts-avatar {
@@ -874,7 +1001,17 @@ $extraStyles = '
 
 .accounts-email {
   color: #767676;
-  word-break: break-word;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.35;
+  text-decoration: none;
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+
+.accounts-email:hover {
+  color: #2f49d1;
+  text-decoration: underline;
 }
 
 .accounts-muted {
@@ -974,8 +1111,10 @@ $extraStyles = '
 
 .accounts-table-actions {
   display: flex;
+  align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 .accounts-inline-form {
@@ -995,6 +1134,21 @@ $extraStyles = '
   line-height: 1.2;
   color: #2f49d1;
   background-color: rgba(47, 73, 209, 0.1);
+}
+
+.accounts-table-actions .accounts-inline-btn {
+  gap: 6px;
+  border: 1px solid transparent;
+  padding: 8px 12px;
+}
+
+.accounts-table-actions .accounts-inline-btn i,
+.accounts-table-actions .accounts-inline-note i {
+  font-size: 16px;
+}
+
+.accounts-table-actions .accounts-action-edit {
+  border-color: rgba(47, 73, 209, 0.16);
 }
 
 .accounts-inline-btn[disabled] {
@@ -1047,6 +1201,51 @@ $extraStyles = '
   line-height: 1.2;
   color: #5e667a;
   background-color: rgba(118, 118, 118, 0.12);
+}
+
+.accounts-table-actions .accounts-inline-note {
+  gap: 6px;
+  padding: 8px 12px;
+  color: #5e667a;
+  white-space: nowrap;
+}
+
+.accounts-status-badge {
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.accounts-status-badge::before {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: currentColor;
+  content: "";
+  flex-shrink: 0;
+}
+
+.accounts-table {
+  min-width: 1080px;
+}
+
+.accounts-table .accounts-column-id {
+  width: 64px;
+}
+
+.accounts-table .accounts-column-account {
+  min-width: 290px;
+}
+
+.accounts-table .accounts-column-status {
+  width: 120px;
+}
+
+.accounts-table .accounts-column-actions {
+  width: 210px;
+}
+
+.users-table.table-wrapper {
+  overflow-x: auto;
 }
 
 .accounts-pagination {
@@ -1251,9 +1450,9 @@ ob_start();
                   <span class="accounts-field-note">Required when Research Coordinator is one of the account login roles.</span>
                 </label>
 
-                <label class="form-label-wrapper">
+                <label class="form-label-wrapper accounts-program-field">
                   <span class="form-label">Assigned Program</span>
-                  <select class="accounts-select" name="programid">
+                  <select class="accounts-select accounts-program-select" name="programid">
                     <option value="">No specific program</option>
                     <?php foreach ($programOptions as $programOption): ?>
                       <?php $programOptionId = isset($programOption['programid']) ? (int) $programOption['programid'] : 0; ?>
@@ -1295,8 +1494,8 @@ ob_start();
         <div class="sort-bar">
           <form class="accounts-filter-form" method="get" action="<?= e(app_link('administrator/accounts.php')); ?>">
             <label class="search-wrapper">
-              <i data-feather="search" aria-hidden="true"></i>
-              <input class="form-input" type="text" name="q" value="<?= e($search); ?>" placeholder="Search by id, name, or email">
+              <i class="accounts-search-icon" data-feather="search" aria-hidden="true"></i>
+              <input class="form-input" type="text" name="q" value="<?= e($search); ?>" placeholder="Search by ID, name, or email" aria-label="Search accounts">
             </label>
 
             <select class="accounts-select" name="role">
@@ -1325,29 +1524,28 @@ ob_start();
         <p class="accounts-toolbar-note">Manage the live <code>tblaccount</code> records here. Editing updates the account information directly, and disabling an account blocks future sign-ins.</p>
 
         <div class="users-table table-wrapper">
-          <table class="posts-table">
+          <table class="posts-table accounts-table">
             <thead>
               <tr class="users-table-info">
-                <th>ID</th>
-                <th>Account Name</th>
-                <th>Email</th>
+                <th class="accounts-column-id">ID</th>
+                <th class="accounts-column-account">Account Name</th>
                 <th>Role</th>
                 <th>Campus Scope</th>
-                <th>Status</th>
-                <th>Action</th>
+                <th class="accounts-column-status">Status</th>
+                <th class="accounts-column-actions">Actions</th>
               </tr>
             </thead>
             <tbody>
               <?php if ($accounts === []): ?>
                 <tr>
-                  <td class="accounts-empty" colspan="7">No accounts matched the current filters.</td>
+                  <td class="accounts-empty" colspan="6">No accounts matched the current filters.</td>
                 </tr>
               <?php endif; ?>
 
               <?php foreach ($accounts as $record): ?>
                 <?php
                 $name = trim((string) $record['acc_name']);
-                $email = trim((string) $record['email']);
+                $email = strtolower(trim((string) $record['email']));
                 $roleCode = (int) $record['acc_type'];
                 $recordRoleIds = administrator_account_role_ids($record['acc_roles'] ?? '', $roleCode);
                 $initial = administrator_account_initial($name);
@@ -1371,10 +1569,16 @@ ob_start();
                   <td>
                     <div class="accounts-table-name">
                       <span class="accounts-avatar"><?= e($initial); ?></span>
-                      <span><?= e($name); ?></span>
+                      <span class="accounts-identity-copy">
+                        <span class="accounts-table-account-name"><?= e($name); ?></span>
+                        <?php if (filter_var($email, FILTER_VALIDATE_EMAIL)): ?>
+                          <a class="accounts-email" href="mailto:<?= e($email); ?>"><?= e($email); ?></a>
+                        <?php else: ?>
+                          <span class="accounts-email"><?= e($email); ?></span>
+                        <?php endif; ?>
+                      </span>
                     </div>
                   </td>
-                  <td class="accounts-email"><?= e($email); ?></td>
                   <td>
                     <div class="accounts-role-list">
                       <?php foreach ($recordRoleIds as $recordRoleId): ?>
@@ -1389,30 +1593,37 @@ ob_start();
                     <div class="accounts-muted"><?= e($recordProgramLabel); ?></div>
                   </td>
                   <td>
-                    <span class="<?= e($isEnabled ? 'badge-active' : 'badge-disabled'); ?>">
+                    <span class="accounts-status-badge <?= e($isEnabled ? 'badge-active' : 'badge-disabled'); ?>">
                       <?= e(administrator_account_status_label($isEnabled)); ?>
                     </span>
                   </td>
                   <td>
                     <div class="accounts-table-actions">
-                      <a class="accounts-inline-btn" href="<?= e($editUrl); ?>">Edit</a>
+                      <a class="accounts-inline-btn accounts-action-edit" href="<?= e($editUrl); ?>" title="Edit account">
+                        <i class="bx bx-edit-alt" aria-hidden="true"></i>
+                        <span>Edit</span>
+                      </a>
 
                       <?php if ($isCurrentAccount): ?>
-                        <span class="accounts-inline-note">Current Session</span>
+                        <span class="accounts-inline-note" title="This account is protected while signed in">
+                          <i class="bx bx-shield-quarter" aria-hidden="true"></i>
+                          <span>Current account</span>
+                        </span>
                       <?php else: ?>
                         <form class="accounts-inline-form" method="post" action="<?= e(administrator_accounts_url($pageFiltersWithEditor)); ?>">
                           <input type="hidden" name="csrf_token" value="<?= e(csrf_token()); ?>">
                           <input type="hidden" name="action" value="toggle_account">
                           <input type="hidden" name="accountid" value="<?= e((string) $record['accountid']); ?>">
                           <input type="hidden" name="target_status" value="<?= $isEnabled ? '0' : '1'; ?>">
-                          <button class="accounts-inline-btn <?= e($isEnabled ? 'danger' : 'success'); ?>" type="submit">
-                            <?= e($isEnabled ? 'Disable' : 'Enable'); ?>
+                          <button
+                            class="accounts-inline-btn <?= e($isEnabled ? 'danger' : 'success'); ?>"
+                            type="submit"
+                            title="<?= e($isEnabled ? 'Disable account access' : 'Enable account access'); ?>"
+                          >
+                            <i class="bx <?= e($isEnabled ? 'bx-user-x' : 'bx-user-check'); ?>" aria-hidden="true"></i>
+                            <span><?= e($isEnabled ? 'Disable' : 'Enable'); ?></span>
                           </button>
                         </form>
-                      <?php endif; ?>
-
-                      <?php if (filter_var($email, FILTER_VALIDATE_EMAIL)): ?>
-                        <a class="accounts-inline-btn neutral" href="mailto:<?= e($email); ?>">Email</a>
                       <?php endif; ?>
                     </div>
                   </td>
@@ -1456,5 +1667,7 @@ AdminPage::render([
     'title' => 'Administrator | Accounts',
     'current_page' => 'accounts',
     'main_content' => $mainContent,
+    'extra_head' => $extraHead,
+    'extra_scripts' => $extraScripts,
     'extra_styles' => $extraStyles,
 ]);

@@ -54,13 +54,13 @@ $roleCards = [
         'icon' => 'bx-network-chart',
         'note' => 'Manage extension projects, components, partners, and outputs.',
     ],
+    Auth::ROLE_PROFESSOR => [
+        'icon' => 'bx-book-reader',
+        'note' => 'Manage your research and view your faculty assignments.',
+    ],
     3 => [
         'icon' => 'bx-user-pin',
         'note' => 'Open the student workspace when it is available.',
-    ],
-    4 => [
-        'icon' => 'bx-chalkboard',
-        'note' => 'Open the professor workspace when it is available.',
     ],
     0 => [
         'icon' => 'bx-user',
