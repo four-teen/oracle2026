@@ -514,6 +514,8 @@ final class Database
                 panelist_accountids VARCHAR(255) NULL,
                 statistician_accountid ' . $accountIdType . ' NULL,
                 english_critic_accountid ' . $accountIdType . ' NULL,
+                owner_accountid ' . $accountIdType . ' NULL,
+                is_published TINYINT(1) NOT NULL DEFAULT 1,
                 KEY idx_tblresearches_typeid (typeid),
                 KEY idx_tblresearches_sdgs (sdgs),
                 KEY idx_tblresearches_submitted_at (submitted_at),
@@ -564,6 +566,8 @@ final class Database
             'panelist_accountids' => 'ALTER TABLE tblresearches ADD COLUMN panelist_accountids VARCHAR(255) NULL',
             'statistician_accountid' => 'ALTER TABLE tblresearches ADD COLUMN statistician_accountid ' . $accountIdType . ' NULL',
             'english_critic_accountid' => 'ALTER TABLE tblresearches ADD COLUMN english_critic_accountid ' . $accountIdType . ' NULL',
+            'owner_accountid' => 'ALTER TABLE tblresearches ADD COLUMN owner_accountid ' . $accountIdType . ' NULL',
+            'is_published' => 'ALTER TABLE tblresearches ADD COLUMN is_published TINYINT(1) NOT NULL DEFAULT 1',
             'normalized_title' => 'ALTER TABLE tblresearches ADD COLUMN normalized_title TEXT NULL',
             'similarity_refreshed_at' => 'ALTER TABLE tblresearches ADD COLUMN similarity_refreshed_at TIMESTAMP NULL DEFAULT NULL',
         ];
@@ -578,7 +582,7 @@ final class Database
             $researchColumns = self::tableColumns('tblresearches');
         }
 
-        foreach (['adviser_accountid', 'statistician_accountid', 'english_critic_accountid'] as $accountColumn) {
+        foreach (['adviser_accountid', 'statistician_accountid', 'english_critic_accountid', 'owner_accountid'] as $accountColumn) {
             self::ensureColumnType('tblresearches', $accountColumn, $accountIdType, true);
         }
 
@@ -610,6 +614,13 @@ final class Database
              WHERE m.english_critic_accountid IS NOT NULL
                AND a.accountid IS NULL'
         );
+        self::connection()->exec(
+            'UPDATE tblresearches m
+             LEFT JOIN tblaccount a ON a.accountid = m.owner_accountid
+             SET m.owner_accountid = NULL
+             WHERE m.owner_accountid IS NOT NULL
+               AND a.accountid IS NULL'
+        );
 
         self::ensureIndex('tblresearches', 'idx_tblresearches_typeid', 'typeid');
         self::ensureIndex('tblresearches', 'idx_tblresearches_sdgs', 'sdgs');
@@ -620,6 +631,8 @@ final class Database
         self::ensureIndex('tblresearches', 'idx_tblresearches_adviser_accountid', 'adviser_accountid');
         self::ensureIndex('tblresearches', 'idx_tblresearches_statistician_accountid', 'statistician_accountid');
         self::ensureIndex('tblresearches', 'idx_tblresearches_english_critic_accountid', 'english_critic_accountid');
+        self::ensureIndex('tblresearches', 'idx_tblresearches_owner_accountid', 'owner_accountid');
+        self::ensureIndex('tblresearches', 'idx_tblresearches_is_published', 'is_published');
 
         self::ensureForeignKey(
             'tblresearches',
@@ -653,8 +666,17 @@ final class Database
             'accountid',
             'SET NULL'
         );
+        self::ensureForeignKey(
+            'tblresearches',
+            'fk_tblresearches_owner_account',
+            'owner_accountid',
+            'tblaccount',
+            'accountid',
+            'SET NULL'
+        );
 
         self::ensureManuscriptPanelistTable();
+        self::ensureManuscriptCoauthorTable();
         self::ensureTitleSimilarityTables();
 
         unset(self::$tableColumns['tblresearches']);
@@ -967,6 +989,35 @@ final class Database
                 $insertStatement->execute();
             }
         }
+    }
+
+    private static function ensureManuscriptCoauthorTable(): void
+    {
+        $manuscriptIdType = self::columnType('tblresearches', 'titleid') ?? 'INT(10) UNSIGNED';
+        $accountIdType = self::columnType('tblaccount', 'accountid') ?? 'INT';
+
+        self::connection()->exec(
+            'CREATE TABLE IF NOT EXISTS tblmanuscript_coauthors (
+                manuscript_coauthorid INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                manuscriptid ' . $manuscriptIdType . ' NOT NULL,
+                accountid ' . $accountIdType . ' NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+        self::ensureColumnType('tblmanuscript_coauthors', 'manuscriptid', $manuscriptIdType, false);
+        self::ensureColumnType('tblmanuscript_coauthors', 'accountid', $accountIdType, false);
+        self::connection()->exec(
+            'DELETE mc FROM tblmanuscript_coauthors mc
+             LEFT JOIN tblresearches r ON r.titleid = mc.manuscriptid WHERE r.titleid IS NULL'
+        );
+        self::connection()->exec(
+            'DELETE mc FROM tblmanuscript_coauthors mc
+             LEFT JOIN tblaccount a ON a.accountid = mc.accountid WHERE a.accountid IS NULL'
+        );
+        self::ensureIndex('tblmanuscript_coauthors', 'uniq_tblmanuscript_coauthors_pair', 'manuscriptid, accountid', true);
+        self::ensureIndex('tblmanuscript_coauthors', 'idx_tblmanuscript_coauthors_accountid', 'accountid');
+        self::ensureForeignKey('tblmanuscript_coauthors', 'fk_tblmanuscript_coauthors_manuscript', 'manuscriptid', 'tblresearches', 'titleid', 'CASCADE');
+        self::ensureForeignKey('tblmanuscript_coauthors', 'fk_tblmanuscript_coauthors_account', 'accountid', 'tblaccount', 'accountid', 'CASCADE');
     }
 
     private static function ensureColumnType(string $table, string $column, string $type, bool $nullable): void

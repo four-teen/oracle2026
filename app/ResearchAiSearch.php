@@ -89,6 +89,7 @@ LEFT JOIN tblaccount a ON a.accountid = m.adviser_accountid
 LEFT JOIN tblcourse p ON p.courseid = m.programid
 LEFT JOIN tblresearchtype rt ON rt.researchtypeid = m.typeid
 WHERE NULLIF(TRIM(COALESCE(m.title, '')), '') IS NOT NULL
+  AND (COALESCE(m.owner_accountid, 0) = 0 OR m.is_published = 1)
 ORDER BY COALESCE(m.submitted_at, m.updated_at) DESC, m.titleid DESC
 SQL
         )->fetchAll();

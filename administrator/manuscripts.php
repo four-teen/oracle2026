@@ -1005,7 +1005,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            if ($adviserAccountId < 1 || !isset($accountOptionMap[$adviserAccountId])) {
+            if ($adviserAccountId > 0 && !isset($accountOptionMap[$adviserAccountId])) {
                 throw new RuntimeException('Select a valid adviser.');
             }
 
@@ -1063,7 +1063,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      WHERE titleid = :manuscriptid'
                 );
                 $detailsStatement->execute([
-                    'adviser_accountid' => $adviserAccountId,
+                    'adviser_accountid' => $adviserAccountId > 0 ? $adviserAccountId : null,
                     'panelist_accountids' => $panelistAccountIdValue !== '' ? $panelistAccountIdValue : null,
                     'statistician_accountid' => $statisticianAccountId,
                     'english_critic_accountid' => $englishCriticAccountId,
@@ -2071,7 +2071,10 @@ $extraScripts = <<<'HTML'
       }
 
       populateDetailsAbstractState(record);
-      setSelectValue($detailsAdviserSelect, normalizedString(record.adviser_accountid));
+      setSelectValue(
+        $detailsAdviserSelect,
+        normalizedId(record.adviser_accountid) > 0 ? normalizedString(record.adviser_accountid) : '0'
+      );
       setSelectValue($detailsStatisticianSelect, normalizedString(record.statistician_accountid));
       setSelectValue($detailsEnglishCriticSelect, normalizedString(record.english_critic_accountid));
       setMultiSelectValue($detailsPanelistSelect, record.panelist_accountids || []);
@@ -2752,6 +2755,7 @@ ob_start();
             <span class="form-label">Select Adviser</span>
             <select class="manuscripts-select" name="adviser_accountid">
               <option value="">Select Adviser</option>
+              <option value="0"<?= $selectedAdviserAccountId === 0 ? ' selected' : ''; ?>>No adviser</option>
               <?php foreach ($accountOptionMap as $accountId => $accountLabel): ?>
                 <option value="<?= e((string) $accountId); ?>"<?= $accountId === $selectedAdviserAccountId ? ' selected' : ''; ?>>
                   <?= e($accountLabel); ?>

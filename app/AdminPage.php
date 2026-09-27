@@ -1276,7 +1276,7 @@ final class AdminPage
     {
         $dashboard = self::menuItemClass($currentPage === 'dashboard');
         $accounts = self::menuItemClass($currentPage === 'accounts');
-        $researchOpen = in_array($currentPage, ['campus', 'college', 'course', 'research_type', 'title_similarity', 'manuscripts'], true);
+        $researchOpen = in_array($currentPage, ['campus', 'college', 'course', 'research_type', 'title_similarity', 'manuscripts', 'student_research'], true);
         $researchGroup = self::menuItemClass($researchOpen, true);
         $campus = self::menuItemClass($currentPage === 'campus');
         $college = self::menuItemClass($currentPage === 'college');
@@ -1284,6 +1284,7 @@ final class AdminPage
         $researchType = self::menuItemClass($currentPage === 'research_type');
         $titleSimilarity = self::menuItemClass($currentPage === 'title_similarity');
         $manuscripts = self::menuItemClass($currentPage === 'manuscripts');
+        $studentResearch = self::menuItemClass($currentPage === 'student_research');
 
         return '
           <ul class="menu-inner py-1">
@@ -1333,6 +1334,11 @@ final class AdminPage
                 <li class="' . $manuscripts . '">
                   <a href="' . e(app_link('administrator/manuscripts.php')) . '" class="menu-link">
                     ' . self::menuCardContent('bx-book-open', 'Manuscripts', 'Review detailed manuscript data, assignments, and uploads.', true) . '
+                  </a>
+                </li>
+                <li class="' . $studentResearch . '">
+                  <a href="' . e(app_link('administrator/student_research.php')) . '" class="menu-link">
+                    ' . self::menuCardContent('bx-user-voice', 'Student Research', 'Encode student studies and assign the responsible faculty adviser.', true) . '
                   </a>
                 </li>
               </ul>
@@ -1437,6 +1443,12 @@ final class AdminPage
                 'section' => 'Research Workspace',
                 'note' => 'Handle research records, committee assignments, abstracts, and follow-up details.',
                 'icon' => 'bx-book-open',
+            ],
+            'student_research' => [
+                'title' => 'Student Research Management',
+                'section' => 'Research Workspace',
+                'note' => 'Encode student studies, choose the faculty adviser, and maintain each review team.',
+                'icon' => 'bx-user-voice',
             ],
         ];
 

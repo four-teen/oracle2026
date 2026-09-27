@@ -254,6 +254,7 @@ LEFT JOIN tblaccount a ON a.accountid = m.adviser_accountid
 LEFT JOIN tblcourse p ON p.courseid = m.programid
 LEFT JOIN tblresearchtype rt ON rt.researchtypeid = m.typeid
 WHERE NULLIF(TRIM(COALESCE(m.title, '')), '') IS NOT NULL
+  AND (COALESCE(m.owner_accountid, 0) = 0 OR m.is_published = 1)
 SQL;
 }
 
@@ -274,7 +275,8 @@ function landing_research_catalog_count_from_sql(array $filters = []): string
 
     return "FROM tblresearches m\n"
         . ($joins !== [] ? implode("\n", $joins) . "\n" : '')
-        . "WHERE NULLIF(TRIM(COALESCE(m.title, '')), '') IS NOT NULL";
+        . "WHERE NULLIF(TRIM(COALESCE(m.title, '')), '') IS NOT NULL\n"
+        . "  AND (COALESCE(m.owner_accountid, 0) = 0 OR m.is_published = 1)";
 }
 
 function landing_research_catalog_filters(array $filters = []): array
@@ -532,6 +534,7 @@ function landing_research_fetch_years(PDO $pdo): array
         "SELECT DISTINCT YEAR(COALESCE(submitted_at, updated_at)) AS research_year
          FROM tblresearches
          WHERE NULLIF(TRIM(COALESCE(title, '')), '') IS NOT NULL
+           AND (COALESCE(owner_accountid, 0) = 0 OR is_published = 1)
          ORDER BY research_year DESC"
     )->fetchAll(PDO::FETCH_COLUMN);
 
@@ -552,23 +555,8 @@ function landing_research_fetch_filter_options(PDO $pdo): array
          FROM tblresearches m
          INNER JOIN tblresearchtype rt ON rt.researchtypeid = m.typeid
          WHERE NULLIF(TRIM(COALESCE(m.title, '')), '') IS NOT NULL
+           AND (COALESCE(m.owner_accountid, 0) = 0 OR m.is_published = 1)
          ORDER BY rt.research_type ASC"
-    )->fetchAll();
-
-    $programRows = $pdo->query(
-        "SELECT DISTINCT p.courseid AS id, p.coursecode, p.coursedescription, p.coursemajor
-         FROM tblresearches m
-         INNER JOIN tblcourse p ON p.courseid = m.programid
-         WHERE NULLIF(TRIM(COALESCE(m.title, '')), '') IS NOT NULL
-         ORDER BY p.coursecode ASC, p.coursedescription ASC"
-    )->fetchAll();
-
-    $statusRows = $pdo->query(
-        "SELECT DISTINCT TRIM(status) AS label
-         FROM tblresearches
-         WHERE NULLIF(TRIM(COALESCE(title, '')), '') IS NOT NULL
-           AND NULLIF(TRIM(COALESCE(status, '')), '') IS NOT NULL
-         ORDER BY label ASC"
     )->fetchAll();
 
     $focusCounts = $pdo->query(
@@ -579,6 +567,7 @@ function landing_research_fetch_filter_options(PDO $pdo): array
          FROM tblresearches m
          LEFT JOIN tblaccount a ON a.accountid = m.adviser_accountid
          WHERE NULLIF(TRIM(COALESCE(m.title, '')), '') IS NOT NULL"
+        . " AND (COALESCE(m.owner_accountid, 0) = 0 OR m.is_published = 1)"
     )->fetch();
 
     return [
@@ -588,15 +577,6 @@ function landing_research_fetch_filter_options(PDO $pdo): array
                 'label' => landing_research_normalize_text($row['label'] ?? ''),
             ];
         }, $typeRows ?: [])),
-        'programs' => array_values(array_map(static function (array $row): array {
-            return [
-                'id' => (int) ($row['id'] ?? 0),
-                'label' => landing_research_program_label($row),
-            ];
-        }, $programRows ?: [])),
-        'statuses' => array_values(array_filter(array_map(static function (array $row): string {
-            return landing_research_normalize_text($row['label'] ?? '');
-        }, $statusRows ?: []))),
         'focus_counts' => [
             'abstract' => (int) ($focusCounts['abstract_count'] ?? 0),
             'adviser' => (int) ($focusCounts['adviser_count'] ?? 0),
@@ -658,8 +638,6 @@ $researchCatalog = [];
 $researchYears = [];
 $researchFilterOptions = [
     'types' => [],
-    'programs' => [],
-    'statuses' => [],
     'focus_counts' => [
         'abstract' => 0,
         'adviser' => 0,
@@ -672,8 +650,8 @@ $initialCatalogFilters = [
     'q' => (string) ($_GET['q'] ?? ''),
     'year' => isset($_GET['year']) ? (int) $_GET['year'] : 0,
     'type' => isset($_GET['type']) ? (int) $_GET['type'] : 0,
-    'program' => isset($_GET['program']) ? (int) $_GET['program'] : 0,
-    'status' => (string) ($_GET['status'] ?? ''),
+    'program' => 0,
+    'status' => '',
     'focus' => (string) ($_GET['focus'] ?? ''),
     'sort' => (string) ($_GET['sort'] ?? 'latest'),
 ];
@@ -1118,9 +1096,11 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
 
       .research-author {
         margin: 0 0 0.2rem;
-        color: #3c4738;
+        color: #c2410c;
         font-size: 1.03rem;
-        font-weight: 600;
+        font-weight: 800;
+        line-height: 1.35;
+        letter-spacing: 0.01em;
       }
 
       .research-title {
@@ -1849,6 +1829,42 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         line-height: 1.5;
       }
 
+      .repository-search-suggestions {
+        display: grid;
+        gap: 0.85rem;
+        margin-top: 1.2rem;
+        padding-top: 1.15rem;
+        border-top: 1px solid #e5e7eb;
+      }
+
+      .repository-search-suggestions h3 {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        margin: 0;
+        color: #111827;
+        font-family: 'Space Grotesk', 'Public Sans', sans-serif;
+        font-size: 0.96rem;
+        letter-spacing: -0.01em;
+      }
+
+      .repository-search-suggestions h3 i {
+        color: #d97706;
+        font-size: 1.15rem;
+      }
+
+      .repository-search-suggestions .sidebar-check strong {
+        color: #1f2937;
+      }
+
+      .repository-search-suggestions .sidebar-note {
+        padding: 0.72rem 0.78rem;
+        border: 1px solid #fed7aa;
+        border-radius: 0.75rem;
+        background: #fff7ed;
+        color: #9a3412;
+      }
+
       .results-header {
         padding: 0 0 1rem;
         margin-bottom: 1rem;
@@ -1906,7 +1922,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
 
       .research-author {
         font-size: 1.06rem;
-        color: #374151;
+        color: #c2410c;
       }
 
       .research-title {
@@ -3187,26 +3203,6 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
                 </div>
 
                 <div class="repository-filter-field">
-                  <label for="repository-program-filter">Academic program</label>
-                  <select class="repository-filter-control" id="repository-program-filter" name="program">
-                    <option value="">All programs</option>
-<?php foreach ($researchFilterOptions['programs'] as $programOption): ?>
-                    <option value="<?= e((string) $programOption['id']); ?>"<?= (int) $initialCatalogFilters['program'] === (int) $programOption['id'] ? ' selected' : ''; ?>><?= e($programOption['label']); ?></option>
-<?php endforeach; ?>
-                  </select>
-                </div>
-
-                <div class="repository-filter-field">
-                  <label for="repository-status-filter">Research status</label>
-                  <select class="repository-filter-control" id="repository-status-filter" name="status">
-                    <option value="">All statuses</option>
-<?php foreach ($researchFilterOptions['statuses'] as $statusOption): ?>
-                    <option value="<?= e($statusOption); ?>"<?= (string) $initialCatalogFilters['status'] === (string) $statusOption ? ' selected' : ''; ?>><?= e($statusOption); ?></option>
-<?php endforeach; ?>
-                  </select>
-                </div>
-
-                <div class="repository-filter-field">
                   <label for="repository-focus-filter">Record availability</label>
                   <select class="repository-filter-control" id="repository-focus-filter" name="focus">
                     <option value="">All records</option>
@@ -3234,6 +3230,25 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
                   Browsing all <?= e(number_format($researchTotalCount)); ?> indexed records across <?= e($sidebarYearRangeLabel); ?>.
                 </p>
               </form>
+
+              <section class="repository-search-suggestions" aria-labelledby="repository-search-suggestions-title">
+                <h3 id="repository-search-suggestions-title"><i class="bx bx-bulb" aria-hidden="true"></i> Suggested ways to explore</h3>
+                <div class="sidebar-checklist">
+                  <p class="sidebar-check">
+                    <i class="bx bx-search-alt" aria-hidden="true"></i>
+                    <span><strong>Start with keywords.</strong> Search by title, author, adviser, topic, program, or SDG.</span>
+                  </p>
+                  <p class="sidebar-check">
+                    <i class="bx bx-filter-alt" aria-hidden="true"></i>
+                    <span><strong>Narrow the results.</strong> Combine publication year, research type, and record availability.</span>
+                  </p>
+                  <p class="sidebar-check">
+                    <i class="bx bx-show" aria-hidden="true"></i>
+                    <span><strong>Open a record.</strong> Review its abstract, citation, metadata, and permanent link.</span>
+                  </p>
+                </div>
+                <p class="sidebar-note"><strong>Tip:</strong> A few distinctive terms usually produce clearer matches than a full sentence.</p>
+              </section>
             </aside>
           </div>
 
@@ -3704,7 +3719,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
           if (filterForm) {
             const formData = new FormData(filterForm);
 
-            ['year', 'type', 'program', 'status', 'focus', 'sort'].forEach(key => {
+            ['year', 'type', 'focus', 'sort'].forEach(key => {
               const value = String(formData.get(key) || '').trim();
 
               if (value !== '') {
@@ -4240,7 +4255,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         }
 
         if (filterForm) {
-          ['year', 'type', 'program', 'status', 'focus', 'sort'].forEach(key => {
+          ['year', 'type', 'focus', 'sort'].forEach(key => {
             const control = filterForm.elements.namedItem(key);
             const value = initialUrl.searchParams.get(key);
 
@@ -4251,6 +4266,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         }
 
         activeFilters = collectFilters();
+        syncFilterUrl();
         refreshCounters();
 
         const needsInitialRecovery = catalogError !== '' || (totalCount > 0 && loadedCount === 0);

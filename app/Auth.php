@@ -7,6 +7,7 @@ final class Auth
     public const ROLE_ADMIN = 1;
     public const ROLE_RESEARCH_COORDINATOR = 2;
     public const ROLE_EXTENSION_COORDINATOR = 5;
+    public const ROLE_PROFESSOR = 4;
 
     public static function check(): bool
     {
@@ -216,6 +217,11 @@ final class Auth
         return self::role() === self::ROLE_EXTENSION_COORDINATOR;
     }
 
+    public static function isProfessor(): bool
+    {
+        return self::role() === self::ROLE_PROFESSOR;
+    }
+
     public static function campusId(): int
     {
         $account = self::account();
@@ -294,6 +300,19 @@ final class Auth
         }
     }
 
+    public static function requireProfessor(): void
+    {
+        self::requireLogin();
+
+        if (self::isRoleSelectionRequired()) {
+            redirect(app_link('auth/select-role.php'));
+        }
+
+        if (!self::isProfessor()) {
+            redirect(self::defaultWorkspaceUrl());
+        }
+    }
+
     public static function workspaceUrlForRole(int $role, ?array $account = null): string
     {
         $resolvedAccount = $account ?? self::account() ?? [];
@@ -306,6 +325,10 @@ final class Auth
 
         if ($role === self::ROLE_EXTENSION_COORDINATOR) {
             return app_link('extension/');
+        }
+
+        if ($role === self::ROLE_PROFESSOR) {
+            return app_link('professor/');
         }
 
         if (in_array($role, self::administratorRoles(), true)) {
@@ -337,7 +360,6 @@ final class Auth
             self::ROLE_ADMIN,
             0,
             3,
-            4,
         ];
     }
 }
