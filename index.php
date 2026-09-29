@@ -39,6 +39,26 @@ $researchAvatarPalettes = [
 
 $initialResearchBatchSize = 12;
 
+$researchSdgNames = [
+    1 => 'No Poverty',
+    2 => 'Zero Hunger',
+    3 => 'Good Health and Well-Being',
+    4 => 'Quality Education',
+    5 => 'Gender Equality',
+    6 => 'Clean Water and Sanitation',
+    7 => 'Affordable and Clean Energy',
+    8 => 'Decent Work and Economic Growth',
+    9 => 'Industry, Innovation and Infrastructure',
+    10 => 'Reduced Inequalities',
+    11 => 'Sustainable Cities and Communities',
+    12 => 'Responsible Consumption and Production',
+    13 => 'Climate Action',
+    14 => 'Life Below Water',
+    15 => 'Life on Land',
+    16 => 'Peace, Justice and Strong Institutions',
+    17 => 'Partnerships for the Goals',
+];
+
 function landing_research_normalize_text(?string $value): string
 {
     $normalized = preg_replace('/\s+/', ' ', trim((string) $value));
@@ -431,6 +451,7 @@ function landing_research_catalog_items(array $researchRows, array $researchAvat
                 ? $abstractSummary
                 : 'Abstract is not available in this ' . landing_research_abstract_type_label($researchRow) . '.',
             'summary_is_placeholder' => !$hasAbstract,
+            'abstract' => trim(strip_tags((string) ($researchRow['other_details'] ?? ''))),
             'abstract_url' => $abstractUrl,
             'abstract_file_name' => $abstractFileName !== '' ? $abstractFileName : 'Research abstract',
             'access_label' => $abstractUrl !== '' ? 'Abstract file available' : 'Metadata record',
@@ -822,7 +843,8 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         color: var(--landing-ink);
       }
 
-      .google-login-btn {
+      .google-login-btn,
+      .nav-about-btn {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -1281,6 +1303,13 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         gap: 1rem;
       }
 
+      .nav-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        margin-left: auto;
+      }
+
       .brand-lockup {
         gap: 0.65rem;
       }
@@ -1299,7 +1328,8 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         letter-spacing: -0.02em;
       }
 
-      .google-login-btn {
+      .google-login-btn,
+      .nav-about-btn {
         gap: 0.5rem;
         min-height: 2.55rem;
         padding: 0.55rem 0.85rem;
@@ -1312,7 +1342,8 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         font-weight: 650;
       }
 
-      .google-login-btn:hover {
+      .google-login-btn:hover,
+      .nav-about-btn:hover {
         transform: none;
         background: #f9fafb;
         border-color: #cfd5dc;
@@ -1362,6 +1393,50 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         margin-bottom: 0.12rem;
         color: #14532d;
         font-weight: 800;
+      }
+
+      .repository-about-modal .modal-dialog {
+        width: calc(100% - 1rem);
+        max-width: 600px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      .repository-about-modal .modal-content {
+        overflow: hidden;
+        border: 1px solid #d1fae5;
+        border-radius: 1.25rem;
+      }
+
+      .repository-about-modal .modal-header {
+        padding: 1.25rem;
+        border-bottom: 1px solid #e5e7eb;
+        background: linear-gradient(135deg, #f0fdf4, #ecfeff);
+      }
+
+      .repository-about-modal .modal-title {
+        margin: 0;
+        color: #111827;
+        font-size: 1.35rem;
+      }
+
+      .repository-about-modal .modal-header .btn-close {
+        flex-shrink: 0;
+        margin: 0 0 0 0.75rem;
+        box-shadow: none;
+      }
+
+      .repository-about-modal .modal-body {
+        padding: 1.5rem 1.25rem;
+      }
+
+      .repository-about-modal .repository-project-figure {
+        align-items: flex-start;
+      }
+
+      .repository-about-modal figcaption {
+        font-size: 0.95rem;
+        line-height: 1.7;
       }
 
       .repository-hero {
@@ -1481,12 +1556,6 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         background: #166534;
         border-color: #166534;
         color: #ffffff;
-      }
-
-      .repository-hero-aside {
-        margin-top: 1.55rem;
-        padding-top: 1.1rem;
-        border-top: 1px solid rgba(21, 128, 61, 0.13);
       }
 
       .repository-discovery-card {
@@ -1940,6 +2009,25 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         gap: 1rem 1.2rem;
       }
 
+      .research-sdg-thumbnails {
+        display: inline-flex;
+        align-items: center;
+        align-self: center;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        max-width: min(100%, 24rem);
+        margin-left: auto;
+      }
+
+      .research-sdg-thumbnails img {
+        display: block;
+        flex-shrink: 0;
+        width: 2.5rem;
+        height: 2.5rem;
+        object-fit: contain;
+      }
+
       .metric-line {
         font-size: 0.92rem;
         color: #374151;
@@ -2025,12 +2113,6 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         color: #4b5563;
       }
 
-      .metric-pill--blue {
-        border-color: #bae6fd;
-        background: #f0f9ff;
-        color: #0369a1;
-      }
-
       .research-record-note {
         display: inline-flex;
         align-items: center;
@@ -2040,7 +2122,9 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
       }
 
       .research-detail-modal .modal-dialog {
-        max-width: min(920px, calc(100vw - 1.75rem));
+        width: calc(100% - 2rem);
+        max-width: 1120px;
+        margin: 1.75rem auto;
       }
 
       .research-detail-modal .modal-content {
@@ -2055,6 +2139,18 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         padding: 1.4rem 1.5rem 1.1rem;
         border-bottom: 1px solid #e5e7eb;
         background: linear-gradient(135deg, #f0fdf4, #ecfeff);
+      }
+
+      .research-detail-heading {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .research-detail-modal .modal-header .btn-close {
+        flex-shrink: 0;
+        margin: 0 0 0 0.75rem;
+        transform: none;
+        box-shadow: none;
       }
 
       .research-detail-id {
@@ -2081,41 +2177,30 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         background: #ffffff;
       }
 
-      .research-detail-meta {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 0.75rem;
+      .research-detail-authors {
+        margin: 0.8rem 0 0;
+        color: #c2410c;
+        font-size: 1rem;
+        font-weight: 800;
+        line-height: 1.5;
       }
 
-      .research-detail-fact {
-        padding: 0.85rem 0.9rem;
-        border: 1px solid #e5e7eb;
-        border-radius: 0.9rem;
-        background: #f9fafb;
-      }
-
-      .research-detail-fact span,
-      .research-detail-fact strong {
-        display: block;
-      }
-
-      .research-detail-fact span {
-        color: #6b7280;
-        font-size: 0.74rem;
-        font-weight: 750;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-      }
-
-      .research-detail-fact strong {
-        margin-top: 0.3rem;
-        color: #1f2937;
-        font-size: 0.9rem;
-        line-height: 1.45;
+      .research-detail-adviser {
+        margin-left: 0.45rem;
+        color: #4b5563;
+        font-size: 0.95rem;
+        font-weight: 400;
+        font-style: italic;
+        line-height: 1.5;
+        text-transform: lowercase;
       }
 
       .research-detail-section {
         margin-top: 1.25rem;
+      }
+
+      .research-detail-section:first-child {
+        margin-top: 0;
       }
 
       .research-detail-section h6 {
@@ -2131,6 +2216,11 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         margin: 0;
         color: #374151;
         line-height: 1.75;
+        overflow-wrap: anywhere;
+      }
+
+      #research-detail-abstract {
+        white-space: pre-line;
       }
 
       .research-detail-citation {
@@ -2140,14 +2230,61 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         background: #f0fdf4;
       }
 
+      .research-detail-footer {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 1.25rem;
+        margin-top: 1.25rem;
+        padding-top: 1.15rem;
+        border-top: 1px solid #e5e7eb;
+      }
+
       .research-detail-actions {
         display: flex;
         align-items: center;
         gap: 0.65rem;
         flex-wrap: wrap;
-        margin-top: 1.25rem;
-        padding-top: 1.15rem;
-        border-top: 1px solid #e5e7eb;
+        flex: 1 1 20rem;
+      }
+
+      .research-detail-sdgs {
+        width: max-content;
+        max-width: min(100%, 21rem);
+        margin-left: auto;
+      }
+
+      .research-detail-sdgs h6 {
+        margin: 0 0 0.55rem;
+        color: #6b7280;
+        font-size: 0.74rem;
+        font-weight: 750;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .research-detail-sdg-images {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+
+      .research-detail-sdg-images img {
+        display: block;
+        width: 5rem;
+        height: 5rem;
+        object-fit: contain;
+      }
+
+      .research-detail-footer .research-detail-feedback {
+        flex-basis: 100%;
+        margin: 0;
+        min-height: 0;
+      }
+
+      .research-detail-footer .research-detail-feedback:empty {
+        display: none;
       }
 
       .research-detail-action {
@@ -2993,6 +3130,21 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
       }
 
       @media (max-width: 575.98px) {
+        .nav-shell {
+          flex-wrap: wrap;
+          gap: 0.5rem;
+        }
+
+        .nav-actions {
+          gap: 0.5rem;
+        }
+
+        .nav-actions .google-login-btn,
+        .nav-about-btn {
+          padding: 0.55rem 0.65rem;
+          white-space: nowrap;
+        }
+
         .brand-mark {
           width: 3.75rem;
           height: 3.75rem;
@@ -3031,13 +3183,37 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
           justify-content: flex-start;
         }
 
-        .research-detail-meta {
-          grid-template-columns: 1fr;
+        .research-detail-modal .modal-dialog {
+          width: calc(100% - 1rem);
+          margin: 0.5rem auto;
+        }
+
+        .research-detail-modal .modal-header,
+        .research-detail-modal .modal-body {
+          padding: 1.1rem;
+        }
+
+        .research-detail-modal .modal-title {
+          font-size: 1.35rem;
         }
 
         .research-detail-actions,
         .research-detail-action {
           width: 100%;
+        }
+
+        .research-detail-actions {
+          flex-basis: 100%;
+        }
+
+        .research-detail-sdgs {
+          margin-left: 0;
+          max-width: 100%;
+        }
+
+        .research-detail-sdg-images img {
+          width: 4.5rem;
+          height: 4.5rem;
         }
 
         .panel-card,
@@ -3095,15 +3271,18 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
           <span class="brand-title">Oracle</span>
         </a>
 
-        <a href="<?= e(app_link('auth/google.php')); ?>" class="google-login-btn" aria-label="Sign in with Google">
-          <svg class="google-login-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M21.805 12.232c0-.728-.065-1.428-.186-2.101H12.24v3.973h5.358a4.581 4.581 0 0 1-1.99 3.007v2.498h3.217c1.884-1.735 2.98-4.29 2.98-7.377Z" fill="#4285F4"></path>
-            <path d="M12.24 22c2.688 0 4.94-.891 6.587-2.391l-3.217-2.498c-.891.597-2.03.949-3.37.949-2.594 0-4.79-1.752-5.575-4.109H3.34v2.576A9.942 9.942 0 0 0 12.24 22Z" fill="#34A853"></path>
-            <path d="M6.665 13.951a5.966 5.966 0 0 1 0-3.803V7.572H3.34a9.942 9.942 0 0 0 0 8.955l3.325-2.576Z" fill="#FBBC05"></path>
-            <path d="M12.24 6.04c1.462 0 2.775.503 3.808 1.491l2.854-2.854C17.175 3.066 14.923 2 12.24 2A9.942 9.942 0 0 0 3.34 7.572l3.325 2.576C7.45 7.792 9.646 6.04 12.24 6.04Z" fill="#EA4335"></path>
-          </svg>
-          <span>Sign in</span>
-        </a>
+        <div class="nav-actions">
+          <button class="nav-about-btn" type="button" data-bs-toggle="modal" data-bs-target="#repositoryAboutModal" aria-controls="repositoryAboutModal" aria-haspopup="dialog">About</button>
+          <a href="<?= e(app_link('auth/google.php')); ?>" class="google-login-btn" aria-label="Sign in with Google">
+            <svg class="google-login-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M21.805 12.232c0-.728-.065-1.428-.186-2.101H12.24v3.973h5.358a4.581 4.581 0 0 1-1.99 3.007v2.498h3.217c1.884-1.735 2.98-4.29 2.98-7.377Z" fill="#4285F4"></path>
+              <path d="M12.24 22c2.688 0 4.94-.891 6.587-2.391l-3.217-2.498c-.891.597-2.03.949-3.37.949-2.594 0-4.79-1.752-5.575-4.109H3.34v2.576A9.942 9.942 0 0 0 12.24 22Z" fill="#34A853"></path>
+              <path d="M6.665 13.951a5.966 5.966 0 0 1 0-3.803V7.572H3.34a9.942 9.942 0 0 0 0 8.955l3.325-2.576Z" fill="#FBBC05"></path>
+              <path d="M12.24 6.04c1.462 0 2.775.503 3.808 1.491l2.854-2.854C17.175 3.066 14.923 2 12.24 2A9.942 9.942 0 0 0 3.34 7.572l3.325 2.576C7.45 7.792 9.646 6.04 12.24 6.04Z" fill="#EA4335"></path>
+            </svg>
+            <span>Sign in</span>
+          </a>
+        </div>
       </div>
     </nav>
 
@@ -3146,7 +3325,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
               <div class="repository-discovery-heading">
                 <span class="repository-discovery-icon" aria-hidden="true"><i class="bx bx-bot"></i></span>
                 <div>
-                  <p class="repository-discovery-kicker">AI research discovery</p>
+                  <p class="repository-discovery-kicker">Research discovery</p>
                   <h2 class="repository-discovery-title" id="repository-discovery-title">Start with a topic. Find related work.</h2>
                 </div>
               </div>
@@ -3163,15 +3342,6 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
                 </span>
               </div>
             </aside>
-          </div>
-          <div class="repository-hero-aside">
-            <figure class="repository-project-figure" aria-label="Research and innovation statement">
-              <span class="repository-project-figure-icon" aria-hidden="true"><i class="bx bx-badge-check"></i></span>
-              <figcaption>
-                <strong>Official university research output</strong>
-                An approved project funded by the Office of Research, Development and Innovation (RDI).
-              </figcaption>
-            </figure>
           </div>
         </section>
 
@@ -3312,12 +3482,24 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
                         <span class="metric-pill metric-pill--neutral">
                           <i class="bx bx-check-shield"></i> <?= e($research['status']); ?>
                         </span>
-                        <span class="metric-pill metric-pill--blue">
-                          <i class="bx bx-file"></i> <?= e($research['access_label']); ?>
-                        </span>
-                        <span class="metric-pill metric-pill--green">
-                          <i class="bx bx-target-lock"></i> <?= e($research['sdg_metric']); ?>
-                        </span>
+                        <?php if ($research['sdgs'] !== []): ?>
+                          <span class="research-sdg-thumbnails">
+                            <?php foreach ($research['sdgs'] as $sdgLabel): ?>
+                              <?php
+                              if (!preg_match('/^SDG\s*(\d{1,2})$/i', trim($sdgLabel), $sdgMatch)) {
+                                  continue;
+                              }
+                              $sdgCode = (int) $sdgMatch[1];
+                              if (!isset($researchSdgNames[$sdgCode])) {
+                                  continue;
+                              }
+                              $sdgDescription = 'SDG ' . $sdgCode . ': ' . $researchSdgNames[$sdgCode];
+                              $sdgImage = 'assets/img/sdgs/sdg-' . str_pad((string) $sdgCode, 2, '0', STR_PAD_LEFT) . '.png';
+                              ?>
+                              <img src="<?= e(app_link($sdgImage)); ?>" alt="<?= e($sdgDescription); ?>" title="<?= e($sdgDescription); ?>" width="40" height="40" loading="lazy" decoding="async">
+                            <?php endforeach; ?>
+                          </span>
+                        <?php endif; ?>
                       </div>
 
                       <p class="research-summary<?= !empty($research['summary_is_placeholder']) ? ' research-summary--empty' : ''; ?>"><?= e($research['summary']); ?></p>
@@ -3370,7 +3552,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         </div>
         <div>
           <p class="repository-footer-heading">Institutional context</p>
-          <p class="repository-footer-note">Official output of an approved project funded by the Office of Research, Development and Innovation.</p>
+          <p class="repository-footer-note">Official output of an approved project funded by the Office of Research, Development, Extension and Innovation (RDEI).</p>
           <p class="repository-footer-note">ORACLE <?= e(date('Y')); ?></p>
         </div>
       </div>
@@ -3530,29 +3712,41 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
       </button>
     </div>
 
-    <div class="modal fade research-detail-modal" id="researchDetailModal" tabindex="-1" aria-labelledby="researchDetailModalLabel" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+    <div class="modal fade repository-about-modal" id="repositoryAboutModal" tabindex="-1" aria-labelledby="repositoryAboutModalLabel" aria-describedby="repository-about-description" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header">
-            <div>
+            <h2 class="modal-title" id="repositoryAboutModalLabel">About Oracle</h2>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <figure class="repository-project-figure">
+              <span class="repository-project-figure-icon" aria-hidden="true"><i class="bx bx-badge-check"></i></span>
+              <figcaption id="repository-about-description">
+                <strong>Official university research output</strong>
+                An approved project funded by the Office of Research, Development, Extension and Innovation (RDEI).
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade research-detail-modal" id="researchDetailModal" tabindex="-1" aria-labelledby="researchDetailModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <div class="research-detail-heading">
               <p class="research-detail-id" id="research-detail-id">Repository record</p>
               <h5 class="modal-title" id="researchDetailModalLabel">Research record</h5>
+              <p class="research-detail-authors">
+                <span class="visually-hidden">Authors: </span><span id="research-detail-authors">—</span>
+                <em class="research-detail-adviser">(<span id="research-detail-adviser">—</span>)</em>
+              </p>
             </div>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body">
-            <div class="research-detail-meta">
-              <div class="research-detail-fact"><span>Authors</span><strong id="research-detail-authors">—</strong></div>
-              <div class="research-detail-fact"><span>Research type</span><strong id="research-detail-type">—</strong></div>
-              <div class="research-detail-fact"><span>Status</span><strong id="research-detail-status">—</strong></div>
-              <div class="research-detail-fact"><span>Academic program</span><strong id="research-detail-program">—</strong></div>
-              <div class="research-detail-fact"><span>Adviser</span><strong id="research-detail-adviser">—</strong></div>
-              <div class="research-detail-fact"><span>Repository date</span><strong id="research-detail-date">—</strong></div>
-              <div class="research-detail-fact"><span>SDG alignment</span><strong id="research-detail-sdgs">—</strong></div>
-              <div class="research-detail-fact"><span>Record access</span><strong id="research-detail-access">—</strong></div>
-              <div class="research-detail-fact"><span>Publication year</span><strong id="research-detail-year">—</strong></div>
-            </div>
-
             <section class="research-detail-section" aria-labelledby="research-detail-abstract-heading">
               <h6 id="research-detail-abstract-heading">Abstract</h6>
               <p id="research-detail-abstract">Abstract information is unavailable.</p>
@@ -3563,14 +3757,20 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
               <p class="research-detail-citation" id="research-detail-citation">Citation information is unavailable.</p>
             </section>
 
-            <div class="research-detail-actions">
-              <a class="research-detail-action research-detail-action--primary" id="research-detail-abstract-link" href="#" target="_blank" rel="noopener" hidden>
-                <i class="bx bx-file-blank"></i> Open abstract file
-              </a>
-              <button class="research-detail-action" id="research-detail-copy-citation" type="button"><i class="bx bx-copy"></i> Copy citation</button>
-              <button class="research-detail-action" id="research-detail-copy-link" type="button"><i class="bx bx-link"></i> Copy permanent link</button>
+            <div class="research-detail-footer">
+              <div class="research-detail-actions">
+                <a class="research-detail-action research-detail-action--primary" id="research-detail-abstract-link" href="#" target="_blank" rel="noopener" hidden>
+                  <i class="bx bx-file-blank"></i> Open abstract file
+                </a>
+                <button class="research-detail-action" id="research-detail-copy-citation" type="button"><i class="bx bx-copy"></i> Copy citation</button>
+                <button class="research-detail-action" id="research-detail-copy-link" type="button"><i class="bx bx-link"></i> Copy permanent link</button>
+              </div>
+              <section class="research-detail-sdgs" id="research-detail-sdgs" aria-labelledby="research-detail-sdgs-heading" hidden>
+                <h6 id="research-detail-sdgs-heading">SDG alignment</h6>
+                <div class="research-detail-sdg-images" id="research-detail-sdg-images"></div>
+              </section>
+              <p class="research-detail-feedback" id="research-detail-feedback" aria-live="polite"></p>
             </div>
-            <p class="research-detail-feedback" id="research-detail-feedback" aria-live="polite"></p>
           </div>
         </div>
       </div>
@@ -3661,6 +3861,8 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
       (function () {
         const batchSize = <?= e((string) $initialResearchBatchSize); ?>;
         const catalogEndpoint = <?= json_encode(app_link('index.php')); ?>;
+        const sdgImageBase = <?= json_encode(app_link('assets/img/sdgs/')); ?>;
+        const sdgNames = <?= json_encode($researchSdgNames, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
         const countOutput = document.getElementById('research-count');
         const totalOutput = document.getElementById('research-total');
         const emptyState = document.getElementById('empty-state');
@@ -3789,6 +3991,23 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
           }
         };
 
+        const researchSdgCodes = research => [...new Set((Array.isArray(research.sdgs) ? research.sdgs : [])
+          .map(label => {
+            const match = String(label).trim().match(/^SDG\s*(\d{1,2})$/i);
+            return match ? Number(match[1]) : 0;
+          })
+          .filter(code => code >= 1 && code <= 17))];
+
+        const renderResearchSdgImages = research => {
+          const images = researchSdgCodes(research).map(code => {
+            const source = sdgImageBase + 'sdg-' + String(code).padStart(2, '0') + '.png';
+            const description = 'SDG ' + code + ': ' + sdgNames[code];
+            return '<img src="' + escapeHtml(source) + '" alt="' + escapeHtml(description) + '" title="' + escapeHtml(description) + '" width="40" height="40" loading="lazy" decoding="async">';
+          }).join('');
+
+          return images !== '' ? '<span class="research-sdg-thumbnails">' + images + '</span>' : '';
+        };
+
         const renderResearch = research => {
           const title = escapeHtml(research.title || '');
 
@@ -3815,8 +4034,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
             + '        <span class="metric-line"><span class="metric-icon"><i class="bx bx-calendar"></i></span><strong>' + escapeHtml(research.year || '') + '</strong></span>'
             + '        <span class="metric-line"><span class="metric-icon"><i class="bx bx-book-content"></i></span><strong>' + escapeHtml(research.type || 'Research record') + '</strong></span>'
             + '        <span class="metric-pill metric-pill--neutral"><i class="bx bx-check-shield"></i> ' + escapeHtml(research.status || 'Status not set') + '</span>'
-            + '        <span class="metric-pill metric-pill--blue"><i class="bx bx-file"></i> ' + escapeHtml(research.access_label || 'Metadata record') + '</span>'
-            + '        <span class="metric-pill metric-pill--green"><i class="bx bx-target-lock"></i> ' + escapeHtml(research.sdg_metric || 'No SDG tags') + '</span>'
+            + renderResearchSdgImages(research)
             + '      </div>'
             + '      <p class="research-summary' + (research.summary_is_placeholder ? ' research-summary--empty' : '') + '">' + escapeHtml(research.summary || '') + '</p>'
             + '      <div class="research-footer">'
@@ -4016,17 +4234,28 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
           setDetailText('research-detail-id', research.repository_id, 'Repository record');
           setDetailText('researchDetailModalLabel', research.title, 'Research record');
           setDetailText('research-detail-authors', research.authors, 'Author information unavailable');
-          setDetailText('research-detail-type', research.type, 'Research record');
-          setDetailText('research-detail-status', research.status, 'Status not set');
-          setDetailText('research-detail-program', research.domain, 'Program not set');
           setDetailText('research-detail-adviser', research.adviser, 'Adviser not assigned');
-          setDetailText('research-detail-date', research.location, 'Date unavailable');
-          setDetailText('research-detail-sdgs', research.sdg_metric, 'No SDG tags');
-          setDetailText('research-detail-access', research.access_label, 'Metadata record');
-          setDetailText('research-detail-year', research.year, 'Year unavailable');
-          setDetailText('research-detail-abstract', research.summary, 'Abstract information is unavailable.');
+          setDetailText('research-detail-abstract', research.abstract || research.summary, 'Abstract information is unavailable.');
           setDetailText('research-detail-citation', research.citation, 'Citation information is unavailable.');
           setDetailText('research-detail-feedback', '', '');
+
+          const sdgSection = document.getElementById('research-detail-sdgs');
+          const sdgImages = document.getElementById('research-detail-sdg-images');
+
+          if (sdgSection && sdgImages) {
+            const sdgCodes = researchSdgCodes(research);
+
+            sdgImages.replaceChildren(...sdgCodes.map(code => {
+              const image = document.createElement('img');
+              image.src = sdgImageBase + 'sdg-' + String(code).padStart(2, '0') + '.png';
+              image.alt = 'SDG ' + code + ': ' + sdgNames[code];
+              image.title = image.alt;
+              image.width = 80;
+              image.height = 80;
+              return image;
+            }));
+            sdgSection.hidden = sdgCodes.length === 0;
+          }
 
           const abstractLink = document.getElementById('research-detail-abstract-link');
 

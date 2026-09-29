@@ -1,0 +1,135 @@
+.coord-analytics-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+  background: linear-gradient(115deg, #f0fdf4, #ffffff 70%);
+  border-color: #d5eadd;
+}
+
+.coord-hero-eyebrow {
+  margin: 0 0 0.5rem;
+  color: #15803d;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.coord-hero-title {
+  margin: 0;
+  color: #0f172a;
+  font: 700 1.6rem "Space Grotesk", "Public Sans", sans-serif;
+  letter-spacing: -0.04em;
+}
+
+.coord-hero-copy { margin: 0.55rem 0 0; color: #526172; line-height: 1.6; }
+.coord-hero-actions { display: grid; justify-items: end; gap: 0.6rem; }
+.coord-update { color: #64748b; font-size: 0.75rem; }
+
+.coord-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.coord-stat { min-width: 0; padding: 1.15rem; }
+.coord-stat-top { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.coord-stat-kicker { margin: 0; color: #526172; font-size: 0.8rem; font-weight: 600; }
+.coord-stat-icon {
+  width: 2.2rem;
+  height: 2.2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 0.65rem;
+  background: #dcfce7;
+  color: #15803d;
+  font-size: 1.15rem;
+}
+.coord-stat:nth-child(2) .coord-stat-icon { background: #dbeafe; color: #2563eb; }
+.coord-stat:nth-child(3) .coord-stat-icon { background: #fef3c7; color: #92400e; }
+.coord-stat:nth-child(4) .coord-stat-icon { background: #ede9fe; color: #7c3aed; }
+.coord-stat-value { margin: 0.6rem 0 0; color: #0f172a; font: 700 1.9rem "Space Grotesk", sans-serif; letter-spacing: -0.04em; }
+.coord-stat-label { margin: 0.3rem 0 0; color: #64748b; font-size: 0.8rem; line-height: 1.5; }
+
+.coord-production { padding: 1.5rem; margin-bottom: 1rem; }
+.coord-panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.coord-panel-title { margin: 0; color: #0f172a; font-size: 1.1rem; font-weight: 700; }
+.coord-panel-copy { margin: 0.4rem 0 0; color: #64748b; font-size: 0.85rem; line-height: 1.6; }
+.coord-view-switch { display: inline-flex; flex-shrink: 0; gap: 0.2rem; padding: 0.25rem; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 0.7rem; }
+.coord-view-switch button { padding: 0.5rem 0.8rem; border: 0; border-radius: 0.5rem; color: #526172; background: transparent; font: inherit; font-size: 0.8rem; font-weight: 600; }
+.coord-view-switch button[aria-pressed="true"] { background: #fff; color: #14532d; box-shadow: 0 1px 4px #0f172a18; }
+.coord-view-switch button:focus-visible { outline: 2px solid #15803d; outline-offset: 2px; }
+.coord-production-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 0.55rem; margin-top: 1rem; }
+.coord-meta-chip { padding: 0.3rem 0.6rem; border-radius: 0.4rem; background: #f1f5f9; color: #475569; font-size: 0.75rem; }
+.coord-meta-chip strong { color: #0f172a; }
+.coord-chart-hint { margin: 0; color: #64748b; font-size: 0.75rem; }
+.coord-chart-axis { display: flex; justify-content: space-between; margin-top: 1.5rem; color: #64748b; font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+.coord-college { padding: 1.15rem 0; border-bottom: 1px solid #edf2f7; }
+.coord-college:last-child { padding-bottom: 0; border-bottom: 0; }
+.coord-college-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.65rem; }
+.coord-college-name { margin: 0; color: #1e293b; font-size: 0.85rem; font-weight: 700; line-height: 1.5; }
+.coord-college-total { display: flex; align-items: baseline; gap: 0.6rem; flex-shrink: 0; color: #64748b; font-size: 0.75rem; }
+.coord-college-total strong { color: #0f172a; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.coord-college-track {
+  height: 48px;
+  background: repeating-linear-gradient(to right, #edf2f7 0, #edf2f7 1px, transparent 1px, transparent 25%), #f8fafc;
+  border-right: 1px solid #edf2f7;
+  border-radius: 0.45rem;
+  overflow: hidden;
+}
+.coord-college-stack { display: flex; width: var(--college-width); height: 100%; border-radius: 0.45rem; overflow: hidden; }
+.coord-production[data-view="share"] .coord-college-stack { width: 100%; }
+.coord-program-segment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--segment-share);
+  min-width: 0;
+  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--program-color);
+  box-shadow: inset -1px 0 0 #ffffff80;
+}
+.coord-program-label { visibility: hidden; flex-shrink: 0; white-space: nowrap; color: #fff; font-size: 0.75rem; font-weight: 700; }
+.coord-program-segment.has-label .coord-program-label { visibility: visible; }
+.coord-program-keys { display: flex; flex-wrap: wrap; gap: 0.4rem 0.7rem; list-style: none; margin: 0.65rem 0 0; padding: 0; }
+.coord-program-key { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.2rem 0; color: #475569; font-size: 0.72rem; }
+.coord-program-dot { width: 0.55rem; height: 0.55rem; flex-shrink: 0; border-radius: 0.18rem; background: var(--program-color); }
+.coord-program-key strong { padding-left: 0.15rem; color: #0f172a; font-variant-numeric: tabular-nums; }
+.coord-program-key small { color: #64748b; font-size: inherit; }
+.coord-college-note { margin: 0.55rem 0 0; color: #64748b; font-size: 0.75rem; }
+.coord-chart-empty { min-height: 240px; display: grid; align-content: center; justify-items: center; gap: 0.6rem; padding: 2rem; text-align: center; color: #64748b; }
+.coord-chart-empty i { color: #15803d; font-size: 2rem; }
+.coord-chart-empty p { margin: 0; }
+
+@media (max-width: 1199.98px) {
+  .coord-dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .coord-hero-actions { justify-items: start; }
+}
+
+@media (max-width: 575.98px) {
+  .coord-analytics-hero, .coord-production { padding: 1.1rem; }
+  .coord-hero-title { font-size: 1.3rem; }
+  .coord-dashboard-grid { gap: 0.65rem; }
+  .coord-stat { padding: 0.85rem; }
+  .coord-stat-top { align-items: flex-start; }
+  .coord-stat-icon { width: 1.75rem; height: 1.75rem; font-size: 1rem; }
+  .coord-stat-kicker { font-size: 0.72rem; }
+  .coord-stat-value { font-size: 1.55rem; }
+  .coord-stat-label { font-size: 0.72rem; }
+  .coord-panel-header { flex-direction: column; }
+  .coord-college-heading { display: block; }
+  .coord-college-name { font-size: 0.78rem; }
+  .coord-college-total { margin-top: 0.25rem; }
+  .coord-college-track { height: 42px; }
+  .coord-program-keys { gap: 0.3rem 0.65rem; }
+  .coord-chart-hint { flex-basis: 100%; }
+}
