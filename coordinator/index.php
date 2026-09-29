@@ -28,37 +28,8 @@ function coordinator_dashboard_program_label(array $row): string
 {
     $programKey = isset($row['program_key']) ? (int) $row['program_key'] : (int) ($row['programid'] ?? 0);
     $courseCode = trim((string) ($row['coursecode'] ?? ''));
-    $courseDescription = trim((string) ($row['coursedescription'] ?? ''));
-    $courseMajor = trim((string) ($row['coursemajor'] ?? ''));
-    $parts = [];
 
-    if ($courseCode !== '') {
-        $parts[] = $courseCode;
-    }
-
-    if ($courseDescription !== '') {
-        $parts[] = $courseDescription;
-    }
-
-    $label = $parts !== [] ? implode(' - ', $parts) : ($programKey > 0 ? 'Program #' . $programKey : 'Unassigned program');
-
-    if ($courseMajor !== '') {
-        $label .= ' (' . $courseMajor . ')';
-    }
-
-    return $label;
-}
-
-function coordinator_dashboard_short_label(string $value, int $limit = 42): string
-{
-    $normalized = preg_replace('/\s+/', ' ', trim($value));
-    $normalized = is_string($normalized) ? $normalized : trim($value);
-
-    if ($normalized === '' || strlen($normalized) <= $limit) {
-        return $normalized;
-    }
-
-    return rtrim(substr($normalized, 0, $limit - 3)) . '...';
+    return $courseCode !== '' ? $courseCode : ($programKey > 0 ? 'Program #' . $programKey : 'Unassigned program');
 }
 
 function coordinator_dashboard_percentage(int $part, int $total): string
@@ -80,9 +51,7 @@ $stats = [
     'programs_used' => 0,
     'latest_update' => '',
 ];
-$recentRecords = [];
 $programBreakdown = [];
-$chartRows = [];
 $dashboardError = null;
 
 try {
@@ -130,463 +99,83 @@ try {
     $programStatement = $pdo->prepare(
         "SELECT COALESCE(m.programid, 0) AS program_key,
                 p.coursecode,
-                p.coursedescription,
-                p.coursemajor,
+                c.collegeid,
+                c.collegename,
                 COUNT(*) AS total
          FROM tblresearches m
          LEFT JOIN tblcourse p ON p.courseid = m.programid
+         LEFT JOIN tblcollege c
+           ON c.collegeid = CAST(NULLIF(TRIM(COALESCE(p.coursecollege, '')), '') AS UNSIGNED)
+          AND CAST(NULLIF(TRIM(COALESCE(c.collegecampus, '')), '') AS UNSIGNED) = m.campusid
          WHERE m.campusid = :campusid
-         GROUP BY COALESCE(m.programid, 0), p.coursecode, p.coursedescription, p.coursemajor
-         ORDER BY total DESC, p.coursecode ASC
-         LIMIT 8"
+         GROUP BY COALESCE(m.programid, 0), p.coursecode, c.collegeid, c.collegename
+         ORDER BY program_key ASC"
     );
     $programStatement->bindValue(':campusid', $campusId, PDO::PARAM_INT);
     $programStatement->execute();
     $programBreakdown = $programStatement->fetchAll();
-
-    $chartStatement = $pdo->prepare(
-        "SELECT COALESCE(m.programid, 0) AS program_key,
-                p.coursecode,
-                p.coursedescription,
-                p.coursemajor,
-                COALESCE(NULLIF(TRIM(rt.research_type), ''), 'Research record') AS research_type,
-                COUNT(*) AS total
-         FROM tblresearches m
-         LEFT JOIN tblcourse p ON p.courseid = m.programid
-         LEFT JOIN tblresearchtype rt ON rt.researchtypeid = m.typeid
-         WHERE m.campusid = :campusid
-         GROUP BY COALESCE(m.programid, 0), p.coursecode, p.coursedescription, p.coursemajor, COALESCE(NULLIF(TRIM(rt.research_type), ''), 'Research record')
-         ORDER BY p.coursecode ASC, research_type ASC"
-    );
-    $chartStatement->bindValue(':campusid', $campusId, PDO::PARAM_INT);
-    $chartStatement->execute();
-    $chartRows = $chartStatement->fetchAll();
-
-    $recentStatement = $pdo->prepare(
-        "SELECT m.titleid,
-                m.title,
-                m.status,
-                m.updated_at,
-                rt.research_type,
-                p.coursecode,
-                p.coursedescription,
-                p.coursemajor
-         FROM tblresearches m
-         LEFT JOIN tblresearchtype rt ON rt.researchtypeid = m.typeid
-         LEFT JOIN tblcourse p ON p.courseid = m.programid
-         WHERE m.campusid = :campusid
-         ORDER BY COALESCE(m.updated_at, m.submitted_at) DESC, m.titleid DESC
-         LIMIT 7"
-    );
-    $recentStatement->bindValue(':campusid', $campusId, PDO::PARAM_INT);
-    $recentStatement->execute();
-    $recentRecords = $recentStatement->fetchAll();
 } catch (Throwable $exception) {
     $dashboardError = $exception->getMessage();
 }
 
-$programKeys = [];
-$programChartCategories = [];
-$programIndexMap = [];
+$programPalette = ['#2563eb', '#c2410c', '#7c3aed', '#047857', '#be185d', '#0e7490', '#a16207', '#4338ca', '#b91c1c', '#4d7c0f', '#a21caf', '#0369a1'];
+$collegeGroups = [];
+$colorIndex = 0;
 
-foreach ($programBreakdown as $index => $programRow) {
-    $programKey = isset($programRow['program_key']) ? (int) $programRow['program_key'] : 0;
-    $programKeys[] = $programKey;
-    $programIndexMap[$programKey] = $index;
-    $programChartCategories[] = coordinator_dashboard_program_label($programRow);
-}
+foreach ($programBreakdown as $programRow) {
+    $collegeId = (int) ($programRow['collegeid'] ?? 0);
+    $collegeName = trim((string) ($programRow['collegename'] ?? ''));
+    $programTotal = (int) ($programRow['total'] ?? 0);
 
-$seriesMap = [];
-
-foreach ($chartRows as $chartRow) {
-    $programKey = isset($chartRow['program_key']) ? (int) $chartRow['program_key'] : 0;
-
-    if (!array_key_exists($programKey, $programIndexMap)) {
-        continue;
+    if (!isset($collegeGroups[$collegeId])) {
+        $collegeGroups[$collegeId] = [
+            'id' => $collegeId,
+            'name' => $collegeId > 0 ? ($collegeName !== '' ? $collegeName : 'College #' . $collegeId) : 'College not assigned',
+            'total' => 0,
+            'programs' => [],
+        ];
     }
 
-    $typeLabel = trim((string) ($chartRow['research_type'] ?? 'Research record'));
-    $typeLabel = $typeLabel !== '' ? $typeLabel : 'Research record';
+    $color = (int) ($programRow['program_key'] ?? 0) === 0 ? '#94a3b8' : '#64748b';
 
-    if (!isset($seriesMap[$typeLabel])) {
-        $seriesMap[$typeLabel] = array_fill(0, count($programChartCategories), 0);
+    if ($collegeId > 0) {
+        $color = $programPalette[$colorIndex] ?? ('hsl(' . (($colorIndex * 137) % 360) . ', 65%, 35%)');
+        $colorIndex++;
     }
 
-    $seriesMap[$typeLabel][$programIndexMap[$programKey]] = (int) ($chartRow['total'] ?? 0);
-}
-
-$programChartSeries = [];
-
-foreach ($seriesMap as $seriesName => $seriesData) {
-    $programChartSeries[] = [
-        'name' => $seriesName,
-        'data' => array_values($seriesData),
+    $collegeGroups[$collegeId]['total'] += $programTotal;
+    $collegeGroups[$collegeId]['programs'][] = [
+        'code' => coordinator_dashboard_program_label($programRow),
+        'total' => $programTotal,
+        'color' => $color,
     ];
 }
 
-if ($programChartSeries === [] && $programBreakdown !== []) {
-    $programChartSeries[] = [
-        'name' => 'Total records',
-        'data' => array_map(static function (array $row): int {
-            return (int) ($row['total'] ?? 0);
-        }, $programBreakdown),
-    ];
+foreach ($collegeGroups as &$collegeGroup) {
+    usort($collegeGroup['programs'], static function (array $left, array $right): int {
+        return ($right['total'] <=> $left['total']) ?: strnatcasecmp($left['code'], $right['code']);
+    });
 }
+unset($collegeGroup);
 
-$programChartData = [
-    'categories' => $programChartCategories,
-    'series' => $programChartSeries,
-];
-$programChartJson = json_encode($programChartData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-$programChartJson = is_string($programChartJson) ? $programChartJson : '{"categories":[],"series":[]}';
+uasort($collegeGroups, static function (array $left, array $right): int {
+    return (($left['id'] === 0) <=> ($right['id'] === 0))
+        ?: ($right['total'] <=> $left['total'])
+        ?: strnatcasecmp($left['name'], $right['name']);
+});
+
+$activeCollegeCount = count(array_filter($collegeGroups, static function (array $college): bool {
+    return $college['id'] > 0;
+}));
+$largestCollegeTotal = $collegeGroups !== [] ? max(array_column($collegeGroups, 'total')) : 0;
+$scaleMagnitude = pow(10, floor(log10(max(1, $largestCollegeTotal / 4))));
+$scaleStep = max(1, (int) (ceil($largestCollegeTotal / 4 / $scaleMagnitude) * $scaleMagnitude));
+$chartScale = $scaleStep * 4;
 $abstractCoverage = coordinator_dashboard_percentage($stats['with_abstract'], $stats['records_total']);
 $authorCoverage = coordinator_dashboard_percentage($stats['with_authors'], $stats['records_total']);
 
-$extraStyles = '
-.coord-analytics-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(18rem, 0.55fr);
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.coord-hero-panel {
-  padding: 1.25rem;
-  border-left: 4px solid #15803d;
-}
-
-.coord-hero-eyebrow {
-  margin: 0 0 0.45rem;
-  color: #15803d;
-  font-size: 0.76rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.coord-hero-title {
-  margin: 0;
-  color: #111827;
-  font-size: 1.35rem;
-  font-family: "Space Grotesk", "Public Sans", sans-serif;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-}
-
-.coord-hero-copy {
-  max-width: 58rem;
-  margin: 0.55rem 0 0;
-  color: #4b5563;
-  line-height: 1.65;
-}
-
-.coord-hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.65rem;
-  margin-top: 1rem;
-}
-
-.coord-scope-panel {
-  padding: 1.15rem;
-  display: grid;
-  align-content: center;
-  gap: 0.55rem;
-}
-
-.coord-scope-label {
-  color: #6b7280;
-  font-size: 0.78rem;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.coord-scope-value {
-  color: #111827;
-  font-size: 1.05rem;
-  font-weight: 600;
-}
-
-.coord-dashboard-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.coord-stat {
-  min-height: 10rem;
-  padding: 1.05rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-
-.coord-stat-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.coord-stat-icon {
-  width: 2.65rem;
-  height: 2.65rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.8rem;
-  background: #dcfce7;
-  color: #15803d;
-  font-size: 1.25rem;
-}
-
-.coord-stat-kicker {
-  margin: 0;
-  color: #6b7280;
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-.coord-stat-value {
-  margin: 1rem 0 0;
-  color: #0f172a;
-  font-size: 1.85rem;
-  font-family: "Space Grotesk", "Public Sans", sans-serif;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-}
-
-.coord-stat-label {
-  margin: 0.25rem 0 0;
-  color: #6b7280;
-  font-size: 0.86rem;
-  line-height: 1.45;
-}
-
-.coord-analytics-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(20rem, 0.72fr);
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.coord-panel {
-  padding: 1.15rem;
-}
-
-.coord-panel-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.85rem;
-}
-
-.coord-panel-title {
-  margin: 0;
-  color: #111827;
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: 0;
-}
-
-.coord-panel-copy {
-  margin: 0.25rem 0 0;
-  color: #6b7280;
-  line-height: 1.55;
-}
-
-.coord-chart {
-  min-height: 340px;
-}
-
-.coord-chart-empty {
-  min-height: 280px;
-  display: grid;
-  place-items: center;
-  color: #6b7280;
-  text-align: center;
-}
-
-.coord-breakdown-list,
-.coord-activity-list {
-  display: grid;
-  gap: 0.65rem;
-}
-
-.coord-breakdown-row,
-.coord-activity-row {
-  display: grid;
-  gap: 0.35rem;
-  padding: 0.75rem 0;
-  border-bottom: 1px solid #edf2f7;
-}
-
-.coord-breakdown-row:last-child,
-.coord-activity-row:last-child {
-  border-bottom: 0;
-}
-
-.coord-breakdown-line {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.coord-breakdown-name,
-.coord-activity-title {
-  color: #111827;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-.coord-breakdown-count {
-  color: #15803d;
-  font-weight: 600;
-}
-
-.coord-progress-track {
-  height: 0.45rem;
-  overflow: hidden;
-  border-radius: 999px;
-  background: #ecfdf5;
-}
-
-.coord-progress-value {
-  height: 100%;
-  border-radius: inherit;
-  background: #16a34a;
-}
-
-.coord-activity-meta {
-  color: #6b7280;
-  font-size: 0.84rem;
-  line-height: 1.45;
-}
-
-.coord-pill-soft {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  min-height: 2rem;
-  padding: 0.35rem 0.7rem;
-  border-radius: 999px;
-  background: #f0fdf4;
-  color: #166534;
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-
-@media (max-width: 1199.98px) {
-  .coord-dashboard-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .coord-analytics-hero,
-  .coord-analytics-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 575.98px) {
-  .coord-dashboard-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .coord-panel-header {
-    display: block;
-  }
-}
-';
-
-$extraScripts = '<script src="' . e(app_link('assets/vendor/libs/apex-charts/apexcharts.js')) . '"></script>
-<script>
-(function () {
-  const chartElement = document.getElementById("program-output-chart");
-  const chartData = ' . $programChartJson . ';
-
-  if (!chartElement) {
-    return;
-  }
-
-  if (!window.ApexCharts || !chartData.series || chartData.series.length === 0 || !chartData.categories || chartData.categories.length === 0) {
-    chartElement.innerHTML = "<div class=\"coord-chart-empty\">No chart data is available for this campus yet.</div>";
-    return;
-  }
-
-  const shortenLabel = value => {
-    const label = String(value || "");
-    return label.length > 24 ? label.slice(0, 21) + "..." : label;
-  };
-
-  const chart = new ApexCharts(chartElement, {
-    chart: {
-      type: "line",
-      height: 340,
-      toolbar: { show: false },
-      zoom: { enabled: false },
-      fontFamily: "Public Sans, Segoe UI, Arial, sans-serif"
-    },
-    series: chartData.series,
-    colors: ["#15803d", "#2563eb", "#f59e0b", "#7c3aed", "#dc2626", "#0891b2"],
-    stroke: {
-      curve: "smooth",
-      width: 3
-    },
-    markers: {
-      size: 4,
-      strokeWidth: 2,
-      hover: { size: 6 }
-    },
-    grid: {
-      borderColor: "#e5e7eb",
-      strokeDashArray: 4,
-      padding: { left: 8, right: 8 }
-    },
-    xaxis: {
-      categories: chartData.categories,
-      labels: {
-        rotate: -20,
-        trim: false,
-        style: { colors: "#64748b", fontSize: "12px" },
-        formatter: shortenLabel
-      },
-      tooltip: { enabled: false }
-    },
-    yaxis: {
-      min: 0,
-      forceNiceScale: true,
-      decimalsInFloat: 0,
-      labels: {
-        style: { colors: "#64748b", fontSize: "12px" }
-      },
-      title: {
-        text: "Number of research records",
-        style: { color: "#64748b", fontWeight: 600 }
-      }
-    },
-    legend: {
-      position: "top",
-      horizontalAlign: "left",
-      fontWeight: 600,
-      labels: { colors: "#334155" },
-      markers: { radius: 12 }
-    },
-    tooltip: {
-      shared: true,
-      intersect: false,
-      y: {
-        formatter: value => Number(value || 0).toLocaleString() + " record(s)"
-      }
-    },
-    dataLabels: { enabled: false }
-  });
-
-  chart.render();
-})();
-</script>';
+$extraHead = '<link rel="stylesheet" href="' . e(app_link('assets/css/coordinator-dashboard.css')) . '?v=' . filemtime(dirname(__DIR__) . '/assets/css/coordinator-dashboard.css') . '">';
+$extraScripts = '<script src="' . e(app_link('assets/js/coordinator-dashboard.js')) . '?v=' . filemtime(dirname(__DIR__) . '/assets/js/coordinator-dashboard.js') . '"></script>';
 
 ob_start();
 ?>
@@ -594,28 +183,19 @@ ob_start();
   <div class="coord-alert error" data-coord-swal data-swal-icon="error" data-swal-title="Unable to Load Dashboard" data-swal-text="<?= e($dashboardError); ?>" hidden><?= e($dashboardError); ?></div>
 <?php endif; ?>
 
-<section class="coord-analytics-hero">
-  <article class="coord-card coord-hero-panel">
-    <p class="coord-hero-eyebrow">Campus Research Monitoring</p>
-    <h2 class="coord-hero-title">Analytics dashboard for <?= e($campusLabel); ?></h2>
-    <p class="coord-hero-copy">
-      Monitor research output, manuscript readiness, and program-level distribution for your assigned campus.
-      Use this dashboard for quick review, then update titles, authors, abstracts, SDG tags, and proposal details in Manuscript Management.
-    </p>
-    <div class="coord-hero-actions">
-      <a class="coord-btn-primary" href="<?= e(app_link('coordinator/research.php')); ?>">
-        <i class="bx bx-edit-alt"></i>
-        Open Manuscript Management
-      </a>
-      <span class="coord-pill-soft"><i class="bx bx-time-five"></i> Latest update: <?= e(coordinator_dashboard_date_label($stats['latest_update'])); ?></span>
-    </div>
-  </article>
-
-  <aside class="coord-card coord-scope-panel">
-    <span class="coord-scope-label">Current data scope</span>
-    <span class="coord-scope-value"><?= e($campusLabel); ?></span>
-    <p class="coord-muted mb-0">All counts and trends are limited to records assigned to this campus.</p>
-  </aside>
+<section class="coord-card coord-analytics-hero">
+  <div>
+    <p class="coord-hero-eyebrow"><?= e($campusLabel); ?> &middot; Campus research</p>
+    <h2 class="coord-hero-title">Research production at a glance</h2>
+    <p class="coord-hero-copy">Explore your campus output by college and see how each program contributes.</p>
+  </div>
+  <div class="coord-hero-actions">
+    <a class="coord-btn-primary" href="<?= e(app_link('coordinator/research.php')); ?>">
+      <i class="bx bx-edit-alt"></i>
+      Manage manuscripts
+    </a>
+    <span class="coord-update">Latest update: <?= e(coordinator_dashboard_date_label($stats['latest_update'])); ?></span>
+  </div>
 </section>
 
 <section class="coord-dashboard-grid" aria-label="Campus research analytics summary">
@@ -664,76 +244,81 @@ ob_start();
   </article>
 </section>
 
-<section class="coord-analytics-grid">
-  <article class="coord-card coord-panel">
-    <div class="coord-panel-header">
-      <div>
-        <h2 class="coord-panel-title">Research Output by Program</h2>
-        <p class="coord-panel-copy">Smooth multi-line trend showing the number of records per course/program grouped by research type.</p>
-      </div>
-      <span class="coord-pill-soft"><i class="bx bx-line-chart"></i> Apex analytics</span>
-    </div>
-    <div id="program-output-chart" class="coord-chart"></div>
-  </article>
-
-  <aside class="coord-card coord-panel">
-    <div class="coord-panel-header">
-      <div>
-        <h2 class="coord-panel-title">Program Highlights</h2>
-        <p class="coord-panel-copy">Top programs based on encoded campus records.</p>
-      </div>
-    </div>
-
-    <div class="coord-breakdown-list">
-      <?php if ($programBreakdown === []): ?>
-        <p class="coord-muted mb-0">No program distribution is available yet.</p>
-      <?php endif; ?>
-      <?php foreach ($programBreakdown as $programRow): ?>
-        <?php
-        $programTotal = (int) ($programRow['total'] ?? 0);
-        $programPercent = $stats['records_total'] > 0 ? max(4, min(100, (int) round(($programTotal / $stats['records_total']) * 100))) : 0;
-        ?>
-        <div class="coord-breakdown-row">
-          <div class="coord-breakdown-line">
-            <span class="coord-breakdown-name"><?= e(coordinator_dashboard_program_label($programRow)); ?></span>
-            <span class="coord-breakdown-count"><?= e(number_format($programTotal)); ?></span>
-          </div>
-          <div class="coord-progress-track" aria-hidden="true">
-            <span class="coord-progress-value" style="width: <?= e((string) $programPercent); ?>%;"></span>
-          </div>
-        </div>
-      <?php endforeach; ?>
-    </div>
-  </aside>
-</section>
-
-<section class="coord-card coord-panel">
+<section id="college-output-chart" class="coord-card coord-production" data-view="volume" aria-labelledby="college-output-title">
   <div class="coord-panel-header">
     <div>
-      <h2 class="coord-panel-title">Recent Manuscript Activity</h2>
-      <p class="coord-panel-copy">Latest campus records ready for review or updating.</p>
+      <h2 id="college-output-title" class="coord-panel-title">Research output by college</h2>
+      <p class="coord-panel-copy">Compare college totals and each program's share of research production.</p>
     </div>
-    <a class="coord-btn-secondary" href="<?= e(app_link('coordinator/research.php')); ?>">
-      <i class="bx bx-folder-open"></i>
-      View all records
-    </a>
+    <?php if ($collegeGroups !== []): ?>
+      <div class="coord-view-switch" role="group" aria-label="Chart comparison">
+        <button type="button" data-chart-view="volume" aria-pressed="true">By volume</button>
+        <button type="button" data-chart-view="share" aria-pressed="false">By share</button>
+      </div>
+    <?php endif; ?>
   </div>
 
-  <div class="coord-activity-list">
-    <?php if ($recentRecords === []): ?>
-      <p class="coord-muted mb-0">No manuscript activity has been recorded for this campus yet.</p>
-    <?php endif; ?>
-    <?php foreach ($recentRecords as $record): ?>
-      <article class="coord-activity-row">
-        <div class="coord-activity-title"><?= e((string) ($record['title'] ?? 'Untitled research')); ?></div>
-        <div class="coord-activity-meta">
-          <?= e((string) ($record['research_type'] ?? 'Research record')); ?>
-          &middot; <?= e(coordinator_dashboard_short_label(coordinator_dashboard_program_label($record), 90)); ?>
-          &middot; <?= e(coordinator_dashboard_date_label($record['updated_at'] ?? '')); ?>
+  <?php if ($collegeGroups === []): ?>
+    <div class="coord-chart-empty">
+      <i class="bx bx-bar-chart-alt-2" aria-hidden="true"></i>
+      <strong><?= $dashboardError !== null ? 'Research output is unavailable' : 'No campus manuscripts yet'; ?></strong>
+      <p><?= $dashboardError !== null ? 'Please try loading the dashboard again.' : 'College and program contributions will appear once manuscripts are added.'; ?></p>
+    </div>
+  <?php else: ?>
+    <div class="coord-production-meta">
+      <span class="coord-meta-chip"><strong><?= e(number_format($stats['records_total'])); ?></strong> manuscripts</span>
+      <span class="coord-meta-chip"><strong><?= e(number_format($activeCollegeCount)); ?></strong> <?= $activeCollegeCount === 1 ? 'college' : 'colleges'; ?> with output</span>
+      <p class="coord-chart-hint" data-chart-hint aria-live="polite">Bar length compares manuscript totals. Colors show programs.</p>
+    </div>
+
+    <div class="coord-chart-axis" aria-hidden="true">
+      <?php for ($tick = 0; $tick <= 4; $tick++): ?>
+        <span data-axis-count="<?= e(number_format($scaleStep * $tick)); ?>" data-axis-share="<?= e((string) ($tick * 25)); ?>%">
+          <?= e(number_format($scaleStep * $tick)); ?>
+        </span>
+      <?php endfor; ?>
+    </div>
+
+    <?php foreach ($collegeGroups as $college): ?>
+      <?php $collegeWidth = number_format(($college['total'] / $chartScale) * 100, 6, '.', ''); ?>
+      <article class="coord-college" aria-labelledby="college-name-<?= e((string) $college['id']); ?>">
+        <div class="coord-college-heading">
+          <h3 id="college-name-<?= e((string) $college['id']); ?>" class="coord-college-name"><?= e($college['name']); ?></h3>
+          <div class="coord-college-total">
+            <span><strong><?= e(number_format($college['total'])); ?></strong> manuscripts</span>
+            <span><?= e(coordinator_dashboard_percentage($college['total'], $stats['records_total'])); ?> of campus</span>
+          </div>
         </div>
+        <div class="coord-college-track" role="img" aria-label="<?= e($college['name'] . ': ' . number_format($college['total']) . ' manuscripts. Program contributions are listed below.'); ?>">
+          <div class="coord-college-stack" style="--college-width: <?= e($collegeWidth); ?>%;" aria-hidden="true">
+            <?php foreach ($college['programs'] as $program): ?>
+              <?php $programShare = number_format(($program['total'] / $college['total']) * 100, 6, '.', ''); ?>
+              <div
+                class="coord-program-segment"
+                style="--program-color: <?= e($program['color']); ?>; --segment-share: <?= e($programShare); ?>%;"
+                title="<?= e($program['code'] . ': ' . number_format($program['total']) . ' manuscripts (' . coordinator_dashboard_percentage($program['total'], $college['total']) . ' of this group)'); ?>"
+              >
+                <span class="coord-program-label"><?= e($program['code']); ?></span>
+              </div>
+            <?php endforeach; ?>
+          </div>
+        </div>
+        <ul class="coord-program-keys" aria-label="<?= e('Program contributions for ' . $college['name']); ?>">
+          <?php foreach ($college['programs'] as $program): ?>
+            <li class="coord-program-key" style="--program-color: <?= e($program['color']); ?>;">
+              <span class="coord-program-dot" aria-hidden="true"></span>
+              <span><?= e($program['code']); ?></span>
+              <strong><?= e(number_format($program['total'])); ?><span class="visually-hidden"> manuscripts</span></strong>
+              <small>(<?= e(coordinator_dashboard_percentage($program['total'], $college['total'])); ?>)</small>
+            </li>
+          <?php endforeach; ?>
+        </ul>
+        <?php if ($college['id'] === 0): ?>
+          <p class="coord-college-note">These campus records do not have a program linked to a college on this campus.</p>
+        <?php endif; ?>
       </article>
     <?php endforeach; ?>
-  </div>
+  <?php endif; ?>
 </section>
 <?php
 $mainContent = (string) ob_get_clean();
@@ -742,7 +327,7 @@ CoordinatorPage::render([
     'title' => 'Campus Analytics Dashboard',
     'current_page' => 'dashboard',
     'main_content' => $mainContent,
-    'extra_styles' => $extraStyles,
+    'extra_head' => $extraHead,
     'extra_scripts' => $extraScripts,
     'campus_label' => $campusLabel,
 ]);

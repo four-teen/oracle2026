@@ -78,8 +78,37 @@ $roleCards = [
   <link rel="icon" type="image/png" sizes="64x64" href="<?= e(app_link('assets/img/favicon/oracle-favicon.png')); ?>">
   <link rel="shortcut icon" type="image/x-icon" href="<?= e(app_link('assets/img/favicon/favicon.ico')); ?>">
   <link rel="apple-touch-icon" sizes="180x180" href="<?= e(app_link('assets/img/favicon/apple-touch-icon.png')); ?>">
-  <link rel="stylesheet" href="<?= e(app_link('assets/vendor/fonts/boxicons.css')); ?>">
+  <link rel="preload" href="<?= e(app_link('assets/img/branding/oracle-logo.png')); ?>" as="image" fetchpriority="high">
+  <link rel="preload" href="<?= e(app_link('assets/vendor/fonts/boxicons/boxicons.woff2')); ?>" as="font" type="font/woff2" crossorigin>
   <style>
+    @font-face {
+      font-family: "boxicons";
+      font-style: normal;
+      font-weight: normal;
+      font-display: swap;
+      src: url("<?= e(app_link('assets/vendor/fonts/boxicons/boxicons.woff2')); ?>") format("woff2");
+    }
+
+    .bx {
+      display: inline-block;
+      font-family: "boxicons" !important;
+      font-style: normal;
+      font-variant: normal;
+      font-weight: normal;
+      line-height: 1;
+      text-rendering: auto;
+      text-transform: none;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .bx-book-reader::before { content: "\ec53"; }
+    .bx-grid-alt::before { content: "\ed5e"; }
+    .bx-network-chart::before { content: "\ee01"; }
+    .bx-shield-quarter::before { content: "\ee6b"; }
+    .bx-user::before { content: "\eec6"; }
+    .bx-user-pin::before { content: "\eeca"; }
+
     * {
       box-sizing: border-box;
     }
@@ -87,9 +116,11 @@ $roleCards = [
     body {
       margin: 0;
       min-height: 100vh;
+      min-height: 100dvh;
       display: grid;
-      place-items: center;
-      padding: 24px;
+      align-items: start;
+      justify-items: center;
+      padding: 48px 24px 24px;
       background: #f6f8fb;
       color: #111827;
       font-family: "Public Sans", "Segoe UI", Arial, sans-serif;
@@ -182,10 +213,20 @@ $roleCards = [
       padding: 28px;
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      grid-auto-rows: 1fr;
       gap: 14px;
     }
 
+    .role-grid > form {
+      height: 100%;
+      margin: 0;
+    }
+
     .role-card {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      height: 100%;
       min-height: 172px;
       width: 100%;
       padding: 18px;
@@ -253,6 +294,10 @@ $roleCards = [
     }
 
     @media (max-width: 640px) {
+      body {
+        padding: 24px;
+      }
+
       .role-header,
       .role-footer {
         padding: 22px;
