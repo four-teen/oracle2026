@@ -9,9 +9,13 @@ require_once __DIR__ . '/app/Env.php';
 Env::load(__DIR__ . '/.env');
 require_once __DIR__ . '/app/helpers.php';
 require_once __DIR__ . '/app/Database.php';
-require_once __DIR__ . '/app/ResearchAiSearch.php';
+require_once __DIR__ . '/app/ResearchSimilarity.php';
+ResearchMatchJson::protectResponse();
+
+start_secure_session();
 
 header('Content-Type: application/json; charset=UTF-8');
+header('Cache-Control: no-store');
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     http_response_code(405);
@@ -21,7 +25,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     exit;
 }
 
-$query = trim((string) ($_POST['query'] ?? ''));
+$query = is_string($_POST['query'] ?? null) ? trim($_POST['query']) : '';
 $limit = isset($_POST['limit']) ? (int) $_POST['limit'] : ResearchAiSearch::DEFAULT_LIMIT;
 
 if ($query === '') {
@@ -33,15 +37,35 @@ if ($query === '') {
 }
 
 try {
+    if (!verify_csrf_token(is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : '')) {
+        http_response_code(403);
+        throw new InvalidArgumentException('Refresh the page before submitting another search.');
+    }
+    $requestId = is_string($_POST['request_id'] ?? null) ? $_POST['request_id'] : '';
+    if (!preg_match('/^[a-f0-9]{32}$/D', $requestId)) {
+        throw new InvalidArgumentException('The search request is invalid. Refresh the page and try again.');
+    }
+    $requestKey = hash('sha256', session_id() . '|research-match|' . $requestId);
+    session_write_close();
     $pdo = Database::connection();
-    $result = ResearchAiSearch::search($pdo, $query, $limit);
+    Database::ensureResearchMatchTables();
+    $result = ResearchSimilarity::searchAndSave($pdo, $query, $limit, $requestKey);
 
     if (ob_get_length() !== false && ob_get_length() > 0) {
         ob_clean();
     }
 
     echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+} catch (InvalidArgumentException $exception) {
+    if (http_response_code() !== 403) {
+        http_response_code(422);
+    }
+    if (ob_get_length() !== false && ob_get_length() > 0) {
+        ob_clean();
+    }
+    echo json_encode(['message' => $exception->getMessage()], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 } catch (Throwable $exception) {
+    error_log('Research Match collection: ' . $exception->getMessage());
     http_response_code(500);
 
     if (ob_get_length() !== false && ob_get_length() > 0) {
@@ -49,7 +73,7 @@ try {
     }
 
     echo json_encode([
-        'message' => 'Unable to search the research catalog right now.',
+        'message' => 'Unable to complete and save the search right now. Please try again.',
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 }
 

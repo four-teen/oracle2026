@@ -682,6 +682,40 @@ final class Database
         unset(self::$tableColumns['tblresearches']);
     }
 
+    public static function ensureResearchMatchTables(): void
+    {
+        static $ready = false;
+        if ($ready) {
+            return;
+        }
+        $existing = self::connection()->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME IN ('tblresearchmatch_document', 'tblresearchmatch_batch', 'tblresearchmatch_batch_document',
+                'tblresearchmatch_run', 'tblresearchmatch_result', 'tblresearchmatch_review')")->fetchColumn();
+        if ((int) $existing === 6 && in_array('summary_json', self::tableColumns('tblresearchmatch_run'), true)
+            && in_array('reused_from_result_id', self::tableColumns('tblresearchmatch_result'), true)) {
+            $ready = true;
+            return;
+        }
+        $sql = file_get_contents(dirname(__DIR__) . '/sql/research_match_collection.sql');
+        if ($sql === false) {
+            throw new RuntimeException('Research Match schema is unavailable.');
+        }
+        foreach (explode(';', $sql) as $statement) {
+            if (trim($statement) !== '') {
+                self::connection()->exec($statement);
+            }
+        }
+        if (!in_array('summary_json', self::tableColumns('tblresearchmatch_run'), true)) {
+            self::connection()->exec('ALTER TABLE tblresearchmatch_run ADD COLUMN summary_json LONGTEXT NULL AFTER result_limit');
+            unset(self::$tableColumns['tblresearchmatch_run']);
+        }
+        if (!in_array('reused_from_result_id', self::tableColumns('tblresearchmatch_result'), true)) {
+            self::connection()->exec('ALTER TABLE tblresearchmatch_result ADD COLUMN reused_from_result_id BIGINT UNSIGNED NULL AFTER calculation_json');
+            unset(self::$tableColumns['tblresearchmatch_result']);
+        }
+        $ready = true;
+    }
+
     public static function ensureTitleSimilarityTables(): void
     {
         $manuscriptIdType = self::columnType('tblresearches', 'titleid') ?? 'INT(10) UNSIGNED';
