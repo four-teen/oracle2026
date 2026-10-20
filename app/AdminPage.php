@@ -1328,7 +1328,7 @@ final class AdminPage
                 </li>
                 <li class="' . $titleSimilarity . '">
                   <a href="' . e(app_link('administrator/title_similarity.php')) . '" class="menu-link">
-                    ' . self::menuCardContent('bx-git-compare', 'Title Similarity', 'Review related title pairs, collect labels, and compare algorithm performance.', true) . '
+                    ' . self::menuCardContent('bx-git-compare', 'Research Similarity', 'Collect searches, generate catalog evaluations, and review saved calculations.', true) . '
                   </a>
                 </li>
                 <li class="' . $manuscripts . '">
@@ -1433,9 +1433,9 @@ final class AdminPage
                 'icon' => 'bx-category-alt',
             ],
             'title_similarity' => [
-                'title' => 'Title Similarity Workspace',
+                'title' => 'Research Similarity Evaluation',
                 'section' => 'Research Workspace',
-                'note' => 'Review related title pairs, collect expert labels, and compare algorithm performance before deployment.',
+                'note' => 'Compare saved searches and catalog evaluations with expert relevance reviews.',
                 'icon' => 'bx-git-compare',
             ],
             'manuscripts' => [

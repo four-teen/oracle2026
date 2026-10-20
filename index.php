@@ -2854,6 +2854,23 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         flex-wrap: wrap;
       }
 
+      .research-score-heading { display: grid; gap: .2rem; text-align: right; }
+      .research-score-heading small { color: #64748b; font-size: .72rem; }
+      .research-score-summary { display: flex; flex-wrap: wrap; gap: .55rem 1.2rem; color: #475569; font-size: .8rem; }
+      .research-score-summary strong { color: #166534; }
+      .research-score-details { min-width: 0; border: 1px solid #dce9e1; border-radius: .75rem; background: #f8fcfa; }
+      .research-score-details summary { padding: .75rem 1rem; color: #166534; font-size: .82rem; font-weight: 700; cursor: pointer; }
+      .research-score-details summary:focus-visible { outline: 2px solid #16a34a; outline-offset: 2px; }
+      .research-score-details p { margin: 0; padding: 0 1rem .8rem; color: #64748b; font-size: .76rem; line-height: 1.5; }
+      .research-score-table-wrap { max-width: 100%; overflow-x: auto; margin-bottom: .8rem; }
+      .research-score-table { width: 100%; min-width: 480px; border-collapse: collapse; font-size: .76rem; font-variant-numeric: tabular-nums; }
+      .research-score-table th, .research-score-table td { padding: .65rem .8rem; border-top: 1px solid #e1ebe5; text-align: right; white-space: nowrap; }
+      .research-score-table th:first-child { text-align: left; }
+      .research-score-table thead { color: #52655b; background: #eff6f2; }
+      .research-score-table tbody th { color: #263e30; font-weight: 600; }
+      .research-score-table small { display: block; margin-top: .15rem; color: #64748b; font-weight: 400; }
+      .research-score-table tfoot { color: #166534; font-weight: 800; background: #edf8f1; }
+
       .ai-search-card-meta span {
         color: #4b5563;
         font-size: 0.84rem;
@@ -3781,9 +3798,9 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         <div class="modal-content">
           <div class="modal-header">
             <div>
-              <span class="hero-badge"><i class="bx bx-bot"></i> AI Research Match</span>
+              <span class="hero-badge"><i class="bx bx-bot"></i> Research Match</span>
               <h5 class="modal-title" id="aiResearchModalLabel">Find the closest related research</h5>
-              <p class="ai-modal-copy">Describe a topic, problem, or title idea and the assistant will search the research catalog for the closest matching studies.</p>
+              <p class="ai-modal-copy">Enter a research title or topic to compare it with the titles and full abstracts in the repository.</p>
             </div>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
@@ -3793,10 +3810,12 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
               <textarea
                 id="ai-research-query"
                 class="form-control ai-search-prompt"
+                maxlength="1000"
+                required
                 placeholder="Example: mobile appointment system for healthcare services"
               ></textarea>
               <div class="ai-search-toolbar">
-                <p class="ai-search-hint">Gemini reranks the closest catalog candidates when a key is available. If not, the portal still searches the approved research catalog using local similarity.</p>
+                <p class="ai-search-hint">Four algorithms calculate similarity using 70% title and 30% abstract. Records without an abstract use title scores only.</p>
                 <button type="submit" class="btn ai-search-submit" id="ai-search-submit">
                   <span class="ai-submit-default">Search related research</span>
                   <span class="ai-submit-loading d-none">Searching...</span>
@@ -3806,7 +3825,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
 
             <p class="ai-discovery-notice">
               <i class="bx bx-info-circle" aria-hidden="true"></i>
-              <span>This assistant supports discovery only. Its matches do not assess originality, plagiarism, methodological quality, or academic approval.</span>
+              <span>Successful searches and their calculations are saved for research evaluation. Matches support discovery only and do not assess originality, plagiarism, methodological quality, or academic approval.</span>
             </p>
 
             <div id="ai-search-status" class="ai-search-status ai-search-status--neutral d-none" aria-live="polite"></div>
@@ -4534,6 +4553,8 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         const defaultText = submitButton ? submitButton.querySelector('.ai-submit-default') : null;
         const loadingText = submitButton ? submitButton.querySelector('.ai-submit-loading') : null;
         const aiSearchEndpoint = <?= json_encode(app_link('research_ai_search.php')); ?>;
+        const searchCsrfToken = <?= json_encode(csrf_token()); ?>;
+        let searchRequest = null;
 
         if (!modalElement || !form || !queryInput || !statusContainer || !resultsContainer || !submitButton || !defaultText || !loadingText) {
           return;
@@ -4563,7 +4584,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
             + '  <span class="ai-search-loader-spinner" aria-hidden="true"></span>'
             + '  <span class="ai-search-loader-copy">'
             + '    <span class="ai-search-loader-title">Searching the research database...</span>'
-            + '    <span class="ai-search-loader-note">Checking titles, abstracts, authors, advisers, and program details for "' + escapeHtml(query) + '".</span>'
+            + '    <span class="ai-search-loader-note">Comparing titles and full abstracts with "' + escapeHtml(query) + '" using four similarity algorithms.</span>'
             + '  </span>'
             + '</div>';
         };
@@ -4585,16 +4606,51 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
               : '');
         };
 
+        const formatSimilarity = (value, digits = 1) => {
+          const score = Number(value);
+          return (Number.isFinite(score) ? Math.max(0, Math.min(1, score)) * 100 : 0).toFixed(digits) + '%';
+        };
+
+        const renderScoreBreakdown = match => {
+          const breakdown = match.score_breakdown;
+          if (!breakdown || !Array.isArray(breakdown.algorithms)) return '';
+
+          const titleOnly = breakdown.basis === 'title_only';
+          const rows = breakdown.algorithms.map(algorithm => {
+            return '<tr><th scope="row">' + escapeHtml(algorithm.label)
+              + '<small>' + formatSimilarity(algorithm.weight, 0) + ' weight</small></th>'
+              + '<td>' + formatSimilarity(algorithm.title_score, 2) + '</td>'
+              + '<td>' + (titleOnly ? 'N/A' : formatSimilarity(algorithm.abstract_score, 2)) + '</td>'
+              + '<td>' + formatSimilarity(algorithm.combined_score, 2) + '</td>'
+              + '<td>' + formatSimilarity(algorithm.contribution, 2).replace('%', '') + ' pts</td></tr>';
+          }).join('');
+
+          return '<div class="research-score-summary">'
+            + '<span>Title similarity <strong>' + formatSimilarity(breakdown.title_score) + '</strong></span>'
+            + '<span>Abstract similarity <strong>' + (titleOnly ? 'Unavailable' : formatSimilarity(breakdown.abstract_score)) + '</strong></span>'
+            + '</div><details class="research-score-details"><summary>View calculation</summary>'
+            + '<p>' + (titleOnly
+              ? 'Abstract unavailable. Each algorithm uses 100% of its title score.'
+              : 'Each algorithm combines title similarity × ' + formatSimilarity(breakdown.title_weight, 0)
+                + ' + abstract similarity × ' + formatSimilarity(breakdown.abstract_weight, 0) + '.') + '</p>'
+            + '<div class="research-score-table-wrap" tabindex="0" role="region" aria-label="Similarity calculation for ' + escapeHtml(match.title) + '">'
+            + '<table class="research-score-table"><caption class="visually-hidden">Four-algorithm similarity calculation</caption>'
+            + '<thead><tr><th scope="col">Algorithm</th><th scope="col">Title</th><th scope="col">Abstract</th><th scope="col">Combined</th><th scope="col">Adds to total</th></tr></thead>'
+            + '<tbody>' + rows + '</tbody><tfoot><tr><th scope="row" colspan="4">Overall similarity</th><td>'
+            + formatSimilarity(breakdown.overall_score) + '</td></tr></tfoot></table></div>'
+            + '<p>Each combined score is multiplied by its algorithm weight. Contributions are added as percentage points; totals are calculated before rounding.</p></details>';
+        };
+
         const renderMatches = payload => {
           const matches = Array.isArray(payload && payload.matches) ? payload.matches : [];
           const badges = [
-            payload && payload.used_gemini ? 'Gemini reranked' : 'Local similarity',
+            '4 algorithms',
             matches.length + ' match' + (matches.length === 1 ? '' : 'es'),
           ];
 
           renderStatus(
             payload && payload.summary ? payload.summary : 'Closest research matches are ready.',
-            payload && payload.used_gemini ? 'success' : 'neutral',
+            'neutral',
             badges,
             payload && payload.notice ? payload.notice : ''
           );
@@ -4610,7 +4666,8 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
             const chips = keywords.map(keyword => {
               return '<span class="ai-search-chip">' + escapeHtml(keyword) + '</span>';
             }).join('');
-            const sourceChip = '<span class="ai-search-chip">' + escapeHtml(match.rank_source === 'gemini' ? 'AI-ranked' : 'Similarity-ranked') + '</span>';
+            const basisLabel = match.score_breakdown && match.score_breakdown.basis === 'title_only' ? 'Title only' : 'Title + abstract';
+            const sourceChip = '<span class="ai-search-chip">' + basisLabel + '</span>';
 
             return ''
               + '<article class="ai-search-card">'
@@ -4619,7 +4676,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
               + '      <p class="ai-search-card-kicker">' + escapeHtml((match.research_type || 'Research record') + ' - ' + (match.year || '')) + '</p>'
               + '      <h6 class="ai-search-card-title">' + escapeHtml(match.title || '') + '</h6>'
               + '    </div>'
-              + '    <span class="ai-search-card-score">' + escapeHtml(match.score_label || '') + '</span>'
+              + '    <div class="research-score-heading"><small>Overall similarity</small><span class="ai-search-card-score">' + escapeHtml(match.score_label || '') + '</span></div>'
               + '  </div>'
               + '  <div class="ai-search-card-meta">'
               + '    <span><strong>Program:</strong> ' + escapeHtml(match.program || 'Program not set') + '</span>'
@@ -4630,6 +4687,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
               + '    <span><strong>Adviser:</strong> ' + escapeHtml(match.adviser || 'Adviser not assigned') + '</span>'
               + '  </div>'
               + '  <p class="ai-search-card-reason">' + escapeHtml(match.match_reason || '') + '</p>'
+              + renderScoreBreakdown(match)
               + '  <p class="ai-search-card-copy">' + escapeHtml(match.summary || '') + '</p>'
               + '  <div class="ai-search-card-chips">' + sourceChip + chips + '</div>'
               + '  <div class="ai-search-card-actions">'
@@ -4683,6 +4741,11 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
           }
 
           setSubmitting(true);
+          // Keep the same ID when retrying a failed request; a new successful submission is a new event.
+          if (!searchRequest || searchRequest.query !== query || searchRequest.completed) {
+            const bytes = crypto.getRandomValues(new Uint8Array(16));
+            searchRequest = { query, id: Array.from(bytes, value => value.toString(16).padStart(2, '0')).join(''), completed: false };
+          }
           renderStatus('Searching the research catalog for the closest related studies...', 'neutral', ['Database search'], '');
           renderSearchLoader(query);
 
@@ -4696,6 +4759,8 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
               body: new URLSearchParams({
                 query,
                 limit: '5',
+                csrf_token: searchCsrfToken,
+                request_id: searchRequest.id,
               }),
             });
 
@@ -4713,10 +4778,11 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
             }
 
             renderMatches(payload);
+            searchRequest.completed = true;
           } catch (error) {
             resultsContainer.setAttribute('aria-busy', 'false');
             renderStatus(error && error.message ? error.message : 'Unable to search the research catalog right now.', 'danger', ['Search failed'], '');
-            renderPlaceholder('Try another prompt or check the Gemini configuration in the environment file.');
+            renderPlaceholder('Try a shorter research title or search again in a moment.');
           } finally {
             setSubmitting(false);
           }
