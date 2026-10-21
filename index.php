@@ -17,6 +17,9 @@ $authError = get_flash('auth_error');
 $authSuccess = get_flash('auth_success');
 $configIssues = configuration_issues();
 
+// Persist the search token before releasing the session lock for page rendering.
+$researchMatchCsrfToken = csrf_token();
+
 if (session_status() === PHP_SESSION_ACTIVE) {
     session_write_close();
 }
@@ -4553,7 +4556,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         const defaultText = submitButton ? submitButton.querySelector('.ai-submit-default') : null;
         const loadingText = submitButton ? submitButton.querySelector('.ai-submit-loading') : null;
         const aiSearchEndpoint = <?= json_encode(app_link('research_ai_search.php')); ?>;
-        const searchCsrfToken = <?= json_encode(csrf_token()); ?>;
+        const searchCsrfToken = <?= json_encode($researchMatchCsrfToken); ?>;
         let searchRequest = null;
 
         if (!modalElement || !form || !queryInput || !statusContainer || !resultsContainer || !submitButton || !defaultText || !loadingText) {
