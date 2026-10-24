@@ -55,13 +55,20 @@ for ORACLE_REQUIRED in index.php app/bootstrap.php assets/vendor/js/bootstrap.js
 done
 
 ORACLE_PHP_COUNT=0
+ORACLE_PHP_LIST="$ORACLE_STAGE/.oracle-php-files"
+find "$ORACLE_STAGE" -type f -name '*.php' -print0 > "$ORACLE_PHP_LIST"
 while IFS= read -r -d '' ORACLE_FILE; do
   if ! ORACLE_LINT_OUTPUT="$("$ORACLE_PHP" -l "$ORACLE_FILE" 2>&1)"; then
     printf '%s\nNothing was published.\n' "$ORACLE_LINT_OUTPUT" >&2
     exit 1
   fi
   ORACLE_PHP_COUNT=$((ORACLE_PHP_COUNT + 1))
-done < <(find "$ORACLE_STAGE" -type f -name '*.php' -print0)
+done < "$ORACLE_PHP_LIST"
+rm -- "$ORACLE_PHP_LIST"
+if [[ "$ORACLE_PHP_COUNT" -eq 0 ]]; then
+  printf 'No PHP files were validated. Nothing was published.\n' >&2
+  exit 1
+fi
 
 printf 'Prepared commit %s; %s PHP files passed syntax checks.\n' "$ORACLE_COMMIT" "$ORACLE_PHP_COUNT"
 if [[ "$ORACLE_MODE" == --check ]]; then
