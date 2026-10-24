@@ -444,6 +444,7 @@ function landing_research_catalog_items(array $researchRows, array $researchAvat
             'lead_author' => $authors,
             'year' => $year,
             'domain' => $programLabel,
+            'program_code' => landing_research_normalize_text($researchRow['coursecode'] ?? ''),
             'institution' => $researchType !== '' ? $researchType : 'Research record',
             'location' => $dateLabel,
             'type' => $typeLabel,
@@ -743,6 +744,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
     <link rel="icon" type="image/png" sizes="64x64" href="<?= e(app_link('assets/img/favicon/oracle-favicon.png')); ?>" />
     <link rel="shortcut icon" type="image/x-icon" href="<?= e(app_link('assets/img/favicon/favicon.ico')); ?>" />
     <link rel="apple-touch-icon" sizes="180x180" href="<?= e(app_link('assets/img/favicon/apple-touch-icon.png')); ?>" />
+    <link rel="preload" as="image" href="<?= e(app_link('assets/img/branding/oracle-logo.png')); ?>" fetchpriority="high" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -753,6 +755,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
     <link rel="stylesheet" href="<?= e(app_link('assets/vendor/css/core.css')); ?>" class="template-customizer-core-css" />
     <link rel="stylesheet" href="<?= e(app_link('assets/vendor/css/theme-default.css')); ?>" class="template-customizer-theme-css" />
     <link rel="stylesheet" href="<?= e(app_link('assets/css/demo.css')); ?>" />
+    <link rel="stylesheet" href="<?= e(app_link('assets/css/oracle-intro.css')); ?>?v=2" />
     <script src="<?= e(app_link('assets/vendor/js/helpers.js')); ?>"></script>
     <script src="<?= e(app_link('assets/js/config.js')); ?>"></script>
     <style>
@@ -3275,8 +3278,45 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         }
       }
     </style>
+    <link rel="stylesheet" href="<?= e(app_link('assets/css/oracle-mobile.css')); ?>?v=6" media="(max-width: 991.98px)" />
   </head>
-  <body class="landing-page">
+  <body class="landing-page oracle-intro-page">
+    <div class="oracle-intro" aria-hidden="true">
+      <div class="oracle-intro-brand">
+        <div class="oracle-intro-mark">
+          <img
+            class="oracle-intro-complete"
+            src="<?= e(app_link('assets/img/branding/oracle-logo.png')); ?>"
+            alt=""
+            width="512"
+            height="512"
+            fetchpriority="high"
+          />
+          <span class="oracle-intro-piece oracle-intro-piece-book"></span>
+          <span class="oracle-intro-piece oracle-intro-piece-arc"></span>
+          <span class="oracle-intro-piece oracle-intro-piece-seal"></span>
+          <span class="oracle-intro-piece oracle-intro-piece-torch"></span>
+          <span class="oracle-intro-piece oracle-intro-piece-curve"></span>
+          <span class="oracle-intro-piece oracle-intro-square oracle-intro-square-01"></span>
+          <span class="oracle-intro-piece oracle-intro-square oracle-intro-square-02"></span>
+          <span class="oracle-intro-piece oracle-intro-square oracle-intro-square-03"></span>
+          <span class="oracle-intro-piece oracle-intro-square oracle-intro-square-04"></span>
+          <span class="oracle-intro-piece oracle-intro-square oracle-intro-square-05"></span>
+          <span class="oracle-intro-piece oracle-intro-square oracle-intro-square-06"></span>
+          <span class="oracle-intro-piece oracle-intro-square oracle-intro-square-07"></span>
+          <span class="oracle-intro-piece oracle-intro-square oracle-intro-square-08"></span>
+          <span class="oracle-intro-piece oracle-intro-square oracle-intro-square-09"></span>
+          <span class="oracle-intro-piece oracle-intro-square oracle-intro-square-10"></span>
+          <span class="oracle-intro-piece oracle-intro-square oracle-intro-square-11"></span>
+          <span class="oracle-intro-piece oracle-intro-square oracle-intro-square-12"></span>
+          <span class="oracle-intro-piece oracle-intro-square oracle-intro-square-13"></span>
+          <span class="oracle-intro-piece oracle-intro-square oracle-intro-square-14"></span>
+          <span class="oracle-intro-piece oracle-intro-square oracle-intro-square-15"></span>
+          <span class="oracle-intro-piece oracle-intro-square oracle-intro-square-16"></span>
+        </div>
+        <p class="oracle-intro-name">Oracle</p>
+      </div>
+    </div>
     <nav class="landing-nav">
       <div class="container-xxl nav-shell">
         <a href="<?= e(app_link()); ?>" class="brand-lockup">
@@ -3366,7 +3406,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         </section>
 
         <div class="row g-4">
-          <div class="col-xl-3 col-lg-4">
+          <div class="col-xl-3 col-lg-4 repository-sidebar-column">
             <aside class="panel-card sidebar-panel">
               <h2 class="sidebar-heading">Explore this collection</h2>
               <p class="sidebar-copy">Narrow the live catalog using repository metadata. Every filter below updates the visible record set.</p>
@@ -3442,7 +3482,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
             </aside>
           </div>
 
-          <div class="col-xl-9 col-lg-8">
+          <div class="col-xl-9 col-lg-8 repository-results-column">
             <section class="results-panel">
               <div class="results-header">
                 <div>
@@ -3477,8 +3517,23 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
                         <div class="result-heading">
                           <p class="research-record-id"><i class="bx bx-fingerprint"></i> <?= e($research['repository_id']); ?></p>
                           <p class="research-author"><?= e($research['lead_author']); ?></p>
-                          <h3 class="research-title"><?= e($research['title']); ?></h3>
-                          <p class="research-location"><?= e($research['institution']); ?> | <?= e($research['location']); ?></p>
+                          <h3 class="research-title">
+                            <span class="d-none d-lg-inline"><?= e($research['title']); ?></span>
+                            <button
+                              type="button"
+                              class="research-title-button d-lg-none"
+                              data-research-detail="1"
+                              data-titleid="<?= e((string) $research['titleid']); ?>"
+                              aria-label="View repository record for <?= e($research['title']); ?>"
+                              aria-controls="researchDetailModal"
+                              aria-haspopup="dialog"
+                            ><?= e($research['title']); ?></button>
+                          </h3>
+                          <p class="research-location">
+                            <?= e($research['institution']); ?> |
+                            <span class="research-location-date d-none d-lg-inline"><?= e($research['location']); ?></span>
+                            <span class="research-location-program d-lg-none"><span class="research-program-code"><?= e($research['program_code'] !== '' ? $research['program_code'] : 'Not set'); ?></span> | <?= e((string) $research['year']); ?></span>
+                          </p>
                         </div>
 
                         <button
@@ -3533,7 +3588,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
                           </div>
                         </div>
 
-                        <div>
+                        <div class="research-domain-details">
                           <div class="insight-label">Research domain</div>
                           <div class="research-domain"><?= e($research['domain']); ?></div>
                         </div>
@@ -4047,8 +4102,11 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
             + '        <div class="result-heading">'
             + '          <p class="research-record-id"><i class="bx bx-fingerprint"></i> ' + escapeHtml(research.repository_id || 'Repository record') + '</p>'
             + '          <p class="research-author">' + escapeHtml(research.lead_author || 'Author information unavailable') + '</p>'
-            + '          <h3 class="research-title">' + title + '</h3>'
-            + '          <p class="research-location">' + escapeHtml((research.institution || 'Research record') + ' | ' + (research.location || 'Date unavailable')) + '</p>'
+            + '          <h3 class="research-title"><span class="d-none d-lg-inline">' + title + '</span>'
+            + '<button type="button" class="research-title-button d-lg-none" data-research-detail="1" data-titleid="' + escapeHtml(research.titleid || '') + '" aria-label="View repository record for ' + title + '" aria-controls="researchDetailModal" aria-haspopup="dialog">' + title + '</button></h3>'
+            + '          <p class="research-location">' + escapeHtml(research.institution || 'Research record') + ' | '
+            + '<span class="research-location-date d-none d-lg-inline">' + escapeHtml(research.location || 'Date unavailable') + '</span>'
+            + '<span class="research-location-program d-lg-none"><span class="research-program-code">' + escapeHtml(research.program_code || 'Not set') + '</span> | ' + escapeHtml(research.year || '') + '</span></p>'
             + '        </div>'
             + '        <button type="button" class="btn result-action" data-research-detail="1" data-titleid="' + escapeHtml(research.titleid || '') + '" aria-label="View repository record for ' + title + '">View record</button>'
             + '      </div>'
@@ -4064,7 +4122,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
             + '          <span class="research-affiliation-mark"><i class="bx bx-buildings"></i></span>'
             + '          <div><div class="insight-label">Adviser</div><div class="research-domain">' + escapeHtml(research.adviser || 'Adviser not assigned') + '</div></div>'
             + '        </div>'
-            + '        <div><div class="insight-label">Research domain</div><div class="research-domain">' + escapeHtml(research.domain || 'Program not set') + '</div></div>'
+            + '        <div class="research-domain-details"><div class="insight-label">Research domain</div><div class="research-domain">' + escapeHtml(research.domain || 'Program not set') + '</div></div>'
             + '      </div>'
             + '    </div>'
             + '  </div>'

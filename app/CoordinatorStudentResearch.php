@@ -5,7 +5,7 @@ declare(strict_types=1);
 function coordinator_student_research_url(array $parameters = []): string
 {
     $query = http_build_query($parameters, '', '&');
-    $url = app_link('coordinator/research.php');
+    $url = app_link(Auth::campusResearchWorkspacePath() . 'research.php');
 
     return $query === '' ? $url : $url . '?' . $query;
 }

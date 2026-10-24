@@ -4,11 +4,26 @@ declare(strict_types=1);
 
 final class CoordinatorPage
 {
+    public static function requireWorkspaceRole(int $role): void
+    {
+        if ($role === Auth::ROLE_DIRECTOR) {
+            Auth::requireDirector();
+            return;
+        }
+
+        Auth::requireResearchCoordinator();
+    }
+
     public static function render(array $options = []): void
     {
-        Auth::requireResearchCoordinator();
+        self::requireWorkspaceRole(Auth::isDirector() ? Auth::ROLE_DIRECTOR : Auth::ROLE_RESEARCH_COORDINATOR);
 
-        $title = isset($options['title']) ? (string) $options['title'] : 'Research Coordinator';
+        $workspaceLabel = Auth::isDirector() ? 'Director' : 'Research Coordinator';
+        $workspacePath = Auth::campusResearchWorkspacePath();
+        $footerScope = Auth::isDirector()
+            ? 'campus research analytics and monitoring.'
+            : 'campus research monitoring and manuscript encoding.';
+        $title = isset($options['title']) ? (string) $options['title'] : $workspaceLabel;
         $currentPage = isset($options['current_page']) ? (string) $options['current_page'] : 'dashboard';
         $mainContent = isset($options['main_content']) ? (string) $options['main_content'] : '';
         $extraHead = isset($options['extra_head']) ? trim((string) $options['extra_head']) : '';
@@ -39,7 +54,7 @@ final class CoordinatorPage
       content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0"
     />
     <title><?= e($title); ?></title>
-    <meta name="description" content="Oracle research coordinator workspace" />
+    <meta name="description" content="<?= e('Oracle ' . $workspaceLabel . ' workspace'); ?>" />
     <link rel="icon" type="image/png" sizes="64x64" href="<?= e(app_link('assets/img/favicon/oracle-favicon.png')); ?>" />
     <link rel="shortcut icon" type="image/x-icon" href="<?= e(app_link('assets/img/favicon/favicon.ico')); ?>" />
     <link rel="apple-touch-icon" sizes="180x180" href="<?= e(app_link('assets/img/favicon/apple-touch-icon.png')); ?>" />
@@ -384,7 +399,7 @@ final class CoordinatorPage
   <body>
     <div class="coordinator-shell">
       <aside class="coordinator-sidebar">
-        <a href="<?= e(app_link('coordinator/')); ?>" class="coordinator-brand">
+        <a href="<?= e(app_link($workspacePath)); ?>" class="coordinator-brand">
           <span class="coordinator-brand-mark">
             <img
               src="<?= e(app_link('assets/img/branding/oracle-logo.png')); ?>"
@@ -396,13 +411,15 @@ final class CoordinatorPage
           </span>
           <span>
             <span class="coordinator-brand-title">Oracle</span>
-            <span class="coordinator-brand-subtitle">Research Coordinator</span>
+            <span class="coordinator-brand-subtitle"><?= e($workspaceLabel); ?></span>
           </span>
         </a>
 
-        <nav class="coordinator-menu" aria-label="Research coordinator navigation">
-          <?= self::menuLink('dashboard', $currentPage, 'bx-line-chart', 'Analytics Dashboard', 'Campus output and program trends', 'coordinator/'); ?>
-          <?= self::menuLink('research', $currentPage, 'bx-edit-alt', 'Manuscript Management', 'Encode and update campus records', 'coordinator/research.php'); ?>
+        <nav class="coordinator-menu" aria-label="<?= e($workspaceLabel . ' navigation'); ?>">
+          <?= self::menuLink('dashboard', $currentPage, 'bx-line-chart', 'Analytics Dashboard', 'Campus output and program trends', $workspacePath); ?>
+          <?php if (!Auth::isDirector()): ?>
+            <?= self::menuLink('research', $currentPage, 'bx-edit-alt', 'Manuscript Management', 'Encode and update campus records', $workspacePath . 'research.php'); ?>
+          <?php endif; ?>
         </nav>
 
         <form class="coordinator-logout-form" method="post" action="<?= e(app_link('logout.php')); ?>">
@@ -434,7 +451,7 @@ final class CoordinatorPage
         </div>
 
         <footer class="coordinator-footer">
-          Oracle coordinator workspace for campus research monitoring and manuscript encoding.
+          Oracle <?= e(strtolower($workspaceLabel)); ?> workspace for <?= e($footerScope); ?>
         </footer>
       </main>
     </div>

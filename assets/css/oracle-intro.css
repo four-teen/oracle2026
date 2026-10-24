@@ -1,0 +1,371 @@
+/* The original logo is shared by every fragment and the final, seamless image. */
+.oracle-intro {
+  display: none;
+}
+
+.oracle-intro-brand {
+  display: grid;
+  justify-items: center;
+  gap: 1.15rem;
+}
+
+.oracle-intro-mark {
+  position: relative;
+  width: clamp(10.5rem, 36vw, 13rem);
+  aspect-ratio: 1;
+  isolation: isolate;
+  filter: drop-shadow(0 12px 22px rgba(20, 83, 45, 0.1));
+}
+
+.oracle-intro-complete {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.oracle-intro-piece {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: url('../img/branding/oracle-logo.png') center / contain no-repeat;
+  transform-origin: center;
+  backface-visibility: hidden;
+}
+
+/* These adjoining regions keep the artwork intact when the pieces settle. */
+.oracle-intro-piece-arc {
+  clip-path: polygon(
+    0 0, 100% 0, 100% 25%, 71% 25%, 71% 40%,
+    64% 40%, 64% 24%, 57% 15%, 50% 11%, 43% 16%,
+    37% 24%, 37% 40%, 31% 40%, 31% 68%, 24% 65%, 0 65%
+  );
+  --oracle-piece-x: -24px;
+  --oracle-piece-y: -12px;
+  --oracle-piece-turn: -7deg;
+  --oracle-piece-delay: 100ms;
+}
+
+.oracle-intro-piece-torch {
+  clip-path: polygon(
+    50% 11%, 57% 15%, 64% 24%, 64% 40%,
+    37% 40%, 37% 24%, 43% 16%
+  );
+  --oracle-piece-x: 0px;
+  --oracle-piece-y: -30px;
+  --oracle-piece-turn: 3deg;
+  --oracle-piece-delay: 240ms;
+}
+
+.oracle-intro-piece-seal {
+  clip-path: polygon(31% 40%, 66.5% 40%, 66.5% 69.5%, 64% 71%, 50% 74%, 36% 71%, 31% 68%);
+  --oracle-piece-x: 0px;
+  --oracle-piece-y: 12px;
+  --oracle-piece-turn: 0deg;
+  --oracle-piece-delay: 140ms;
+}
+
+.oracle-intro-piece-curve {
+  clip-path: polygon(79% 56.5%, 85% 56.5%, 85% 65%, 75.5% 65%, 77.7% 63%, 78.6% 60%);
+  --oracle-piece-x: 30px;
+  --oracle-piece-y: -8px;
+  --oracle-piece-turn: 6deg;
+  --oracle-piece-delay: 320ms;
+}
+
+.oracle-intro-piece-book {
+  clip-path: polygon(
+    0 65%, 24% 65%, 31% 68%, 36% 71%, 50% 74%,
+    64% 71%, 69% 68%, 76% 65%, 100% 65%, 100% 100%, 0 100%
+  );
+  --oracle-piece-x: 0px;
+  --oracle-piece-y: 26px;
+  --oracle-piece-turn: 0deg;
+  --oracle-piece-delay: 0ms;
+}
+
+/* Each crop isolates one of the 16 original squares, including its soft edges.
+   Rotating around the square itself keeps its flight and landing controlled. */
+.oracle-intro-square {
+  clip-path: var(--oracle-square-clip);
+  transform-origin: var(--oracle-square-origin);
+}
+
+.oracle-intro-square-01 {
+  --oracle-square-clip: inset(26.36719% 15.625% 69.53125% 80.07812%);
+  --oracle-square-origin: 82.22656% 28.41797%;
+  --oracle-piece-x: 46px;
+  --oracle-piece-y: -62px;
+  --oracle-piece-turn: 48deg;
+  --oracle-piece-delay: 420ms;
+}
+
+.oracle-intro-square-02 {
+  --oracle-square-clip: inset(30.66406% 12.30469% 66.01562% 84.76562%);
+  --oracle-square-origin: 86.23047% 32.32422%;
+  --oracle-piece-x: 78px;
+  --oracle-piece-y: -42px;
+  --oracle-piece-turn: -64deg;
+  --oracle-piece-delay: 560ms;
+}
+
+.oracle-intro-square-03 {
+  --oracle-square-clip: inset(32.22656% 20.70312% 63.67188% 75.19531%);
+  --oracle-square-origin: 77.24609% 34.27734%;
+  --oracle-piece-x: -28px;
+  --oracle-piece-y: -52px;
+  --oracle-piece-turn: -42deg;
+  --oracle-piece-delay: 280ms;
+}
+
+.oracle-intro-square-04 {
+  --oracle-square-clip: inset(35.15625% 15.42969% 61.13281% 80.85938%);
+  --oracle-square-origin: 82.71484% 37.01172%;
+  --oracle-piece-x: 54px;
+  --oracle-piece-y: -30px;
+  --oracle-piece-turn: 72deg;
+  --oracle-piece-delay: 360ms;
+}
+
+.oracle-intro-square-05 {
+  --oracle-square-clip: inset(38.08594% 10.15625% 58.98438% 87.10938%);
+  --oracle-square-origin: 88.47656% 39.55078%;
+  --oracle-piece-x: 88px;
+  --oracle-piece-y: -16px;
+  --oracle-piece-turn: 92deg;
+  --oracle-piece-delay: 500ms;
+}
+
+.oracle-intro-square-06 {
+  --oracle-square-clip: inset(38.67188% 19.92188% 57.61719% 76.5625%);
+  --oracle-square-origin: 78.32031% 40.52734%;
+  --oracle-piece-x: 18px;
+  --oracle-piece-y: -36px;
+  --oracle-piece-turn: -58deg;
+  --oracle-piece-delay: 240ms;
+}
+
+.oracle-intro-square-07 {
+  --oracle-square-clip: inset(40.23438% 24.80469% 56.25% 71.48438%);
+  --oracle-square-origin: 73.33984% 41.99219%;
+  --oracle-piece-x: -42px;
+  --oracle-piece-y: -20px;
+  --oracle-piece-turn: 44deg;
+  --oracle-piece-delay: 180ms;
+}
+
+.oracle-intro-square-08 {
+  --oracle-square-clip: inset(42.38281% 15.23438% 53.90625% 81.25%);
+  --oracle-square-origin: 83.00781% 44.23828%;
+  --oracle-piece-x: 68px;
+  --oracle-piece-y: 12px;
+  --oracle-piece-turn: -78deg;
+  --oracle-piece-delay: 400ms;
+}
+
+.oracle-intro-square-09 {
+  --oracle-square-clip: inset(45.70312% 22.26562% 50.19531% 73.63281%);
+  --oracle-square-origin: 75.68359% 47.75391%;
+  --oracle-piece-x: -24px;
+  --oracle-piece-y: 28px;
+  --oracle-piece-turn: -52deg;
+  --oracle-piece-delay: 220ms;
+}
+
+.oracle-intro-square-10 {
+  --oracle-square-clip: inset(46.28906% 10.9375% 50.19531% 85.54688%);
+  --oracle-square-origin: 87.30469% 48.04688%;
+  --oracle-piece-x: 92px;
+  --oracle-piece-y: 38px;
+  --oracle-piece-turn: 84deg;
+  --oracle-piece-delay: 520ms;
+}
+
+.oracle-intro-square-11 {
+  --oracle-square-clip: inset(49.02344% 27.53906% 46.875% 68.55469%);
+  --oracle-square-origin: 70.50781% 51.07422%;
+  --oracle-piece-x: -46px;
+  --oracle-piece-y: 40px;
+  --oracle-piece-turn: 56deg;
+  --oracle-piece-delay: 160ms;
+}
+
+.oracle-intro-square-12 {
+  --oracle-square-clip: inset(49.41406% 16.99219% 45.3125% 77.73438%);
+  --oracle-square-origin: 80.37109% 52.05078%;
+  --oracle-piece-x: 56px;
+  --oracle-piece-y: 54px;
+  --oracle-piece-turn: -68deg;
+  --oracle-piece-delay: 340ms;
+}
+
+.oracle-intro-square-13 {
+  --oracle-square-clip: inset(52.53906% 12.69531% 44.72656% 84.57031%);
+  --oracle-square-origin: 85.9375% 53.90625%;
+  --oracle-piece-x: 80px;
+  --oracle-piece-y: 72px;
+  --oracle-piece-turn: -96deg;
+  --oracle-piece-delay: 460ms;
+}
+
+.oracle-intro-square-14 {
+  --oracle-square-clip: inset(54.29688% 22.65625% 40.23438% 72.07031%);
+  --oracle-square-origin: 74.70703% 57.03125%;
+  --oracle-piece-x: 22px;
+  --oracle-piece-y: 62px;
+  --oracle-piece-turn: 46deg;
+  --oracle-piece-delay: 260ms;
+}
+
+.oracle-intro-square-15 {
+  --oracle-square-clip: inset(57.8125% 29.49219% 38.28125% 66.60156%);
+  --oracle-square-origin: 68.55469% 59.76562%;
+  --oracle-piece-x: -36px;
+  --oracle-piece-y: 68px;
+  --oracle-piece-turn: -38deg;
+  --oracle-piece-delay: 200ms;
+}
+
+.oracle-intro-square-16 {
+  --oracle-square-clip: inset(61.52344% 24.80469% 35.15625% 71.48438%);
+  --oracle-square-origin: 73.33984% 63.18359%;
+  --oracle-piece-x: 42px;
+  --oracle-piece-y: 82px;
+  --oracle-piece-turn: 62deg;
+  --oracle-piece-delay: 300ms;
+}
+
+.oracle-intro-name {
+  margin: 0;
+  color: #174b2c;
+  font-family: 'Space Grotesk', 'Public Sans', sans-serif;
+  font-size: clamp(1.65rem, 5vw, 1.9rem);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.045em;
+}
+
+/* CSS owns the intro so it also finishes when JavaScript is unavailable. */
+@media (prefers-reduced-motion: no-preference) {
+  .oracle-intro {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    background: #fff;
+    pointer-events: none;
+    animation: oracle-intro-exit 420ms cubic-bezier(.4, 0, .2, 1) 2200ms both;
+  }
+
+  .oracle-intro-brand {
+    padding: 1.5rem;
+    animation: oracle-intro-arrive 1000ms cubic-bezier(.22, 1, .36, 1) both;
+  }
+
+  .oracle-intro-name {
+    animation: oracle-intro-wordmark 600ms cubic-bezier(.22, 1, .36, 1) 850ms both;
+  }
+
+  .oracle-intro-mark {
+    animation: oracle-intro-settle 500ms cubic-bezier(.4, 0, .2, 1) 1580ms both;
+  }
+
+  .oracle-intro-page > :is(.landing-nav, .landing-main, .landing-footer, .ai-floating-actions) {
+    animation: oracle-intro-reveal 520ms cubic-bezier(.22, 1, .36, 1) 2280ms both;
+  }
+
+  @supports (clip-path: polygon(0 0, 100% 0, 100% 100%)) {
+    .oracle-intro-brand {
+      animation: none;
+    }
+
+    .oracle-intro-piece {
+      display: block;
+      animation:
+        oracle-intro-assemble 1080ms cubic-bezier(.22, 1, .36, 1) var(--oracle-piece-delay) both,
+        oracle-intro-fragment-exit 1ms linear 1560ms forwards;
+    }
+
+    .oracle-intro-square {
+      animation:
+        oracle-intro-gather 900ms cubic-bezier(.22, 1, .36, 1) var(--oracle-piece-delay) both,
+        oracle-intro-fragment-exit 1ms linear 1560ms forwards;
+    }
+
+    .oracle-intro-complete {
+      animation: oracle-intro-complete 80ms ease 1480ms both;
+    }
+  }
+}
+
+@keyframes oracle-intro-assemble {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--oracle-piece-x), var(--oracle-piece-y), 0)
+      rotate(var(--oracle-piece-turn)) scale(.94);
+  }
+  20% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+}
+
+@keyframes oracle-intro-gather {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--oracle-piece-x), var(--oracle-piece-y), 0)
+      rotate(var(--oracle-piece-turn)) scale(.45);
+  }
+  18% { opacity: 1; }
+  78% {
+    opacity: 1;
+    transform: translate3d(calc(var(--oracle-piece-x) * -.025), calc(var(--oracle-piece-y) * -.025), 0)
+      rotate(0deg) scale(1.04);
+    animation-timing-function: cubic-bezier(.4, 0, .2, 1);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+}
+
+@keyframes oracle-intro-settle {
+  from, to { transform: translate3d(0, 0, 0) scale(1); }
+  30% { transform: translate3d(0, -5px, 0) scale(1.018); }
+  62% { transform: translate3d(0, 1px, 0) scale(.995); }
+  82% { transform: translate3d(0, -1px, 0) scale(1.002); }
+}
+
+@keyframes oracle-intro-fragment-exit {
+  to { visibility: hidden; }
+}
+
+@keyframes oracle-intro-complete {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes oracle-intro-arrive {
+  from { opacity: 0; transform: translate3d(0, 12px, 0) scale(.94); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes oracle-intro-wordmark {
+  from { opacity: 0; transform: translate3d(0, 8px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes oracle-intro-exit {
+  from { opacity: 1; visibility: visible; }
+  to { opacity: 0; visibility: hidden; }
+}
+
+@keyframes oracle-intro-reveal {
+  from { opacity: 0; visibility: hidden; }
+  to { opacity: 1; visibility: visible; }
+}
