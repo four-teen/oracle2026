@@ -1,0 +1,280 @@
+/* This stylesheet is loaded only below the existing 992px layout breakpoint. */
+.repository-hero,
+.repository-sidebar-column,
+.results-note,
+.results-header .hero-badge > i,
+.result-visual,
+.result-action,
+.research-metrics > .metric-line,
+.research-metrics > .metric-pill,
+.research-footer .research-domain-details,
+.research-footer .research-affiliation-mark,
+.ai-search-modal .modal-title,
+.ai-search-modal .ai-modal-copy,
+.ai-search-modal .ai-search-hint,
+.ai-search-modal .ai-discovery-notice {
+  display: none;
+}
+
+.repository-results-column {
+  flex: 0 0 100%;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.landing-main {
+  padding-top: 1rem;
+}
+
+.nav-shell {
+  min-height: 4.5rem;
+  flex-wrap: nowrap;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.brand-lockup {
+  flex-shrink: 0;
+  gap: 0.5rem;
+}
+
+.brand-mark {
+  width: 3.25rem;
+  height: 3.25rem;
+  flex-basis: 3.25rem;
+}
+
+.nav-actions {
+  flex-shrink: 0;
+  gap: 0.5rem;
+}
+
+.nav-about-btn,
+.nav-actions .google-login-btn {
+  min-height: 2.75rem;
+  white-space: nowrap;
+}
+
+.results-header {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.result-shell {
+  gap: 1rem;
+}
+
+.result-main,
+.result-heading {
+  width: 100%;
+}
+
+.result-main {
+  gap: 0.625rem;
+}
+
+.result-heading {
+  display: flex;
+  flex-direction: column;
+}
+
+.research-title,
+.research-author,
+.research-domain {
+  overflow-wrap: anywhere;
+}
+
+.research-title {
+  order: 1;
+  line-height: 1.25;
+}
+
+.research-author {
+  order: 2;
+  margin: 0 0 0.1rem;
+  font-size: 0.75rem;
+  font-weight: 400;
+  font-style: italic;
+  line-height: 1.5;
+  text-transform: lowercase;
+}
+
+.research-location {
+  order: 3;
+}
+
+.research-title-button {
+  display: block;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.research-title-button:active {
+  color: #15803d;
+}
+
+.research-title-button:focus-visible {
+  outline: 2px solid #15803d;
+  outline-offset: 4px;
+}
+
+.research-metrics {
+  gap: 0.65rem;
+}
+
+.research-metrics:not(:has(.research-sdg-thumbnails img)) {
+  display: none;
+}
+
+.research-sdg-thumbnails {
+  justify-content: flex-start;
+  max-width: 100%;
+  margin-left: 0;
+}
+
+.research-summary {
+  margin: 0;
+}
+
+.research-footer {
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding-top: 0.5rem;
+  text-align: left;
+}
+
+.research-affiliation {
+  justify-content: flex-start;
+  gap: 0;
+  text-align: left;
+}
+
+.ai-floating-actions {
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+.ai-search-modal .modal-dialog {
+  width: calc(100% - 1rem);
+  max-width: 48rem;
+  height: calc(100% - 1rem);
+  min-height: calc(100% - 1rem);
+  margin: 0.5rem auto;
+}
+
+.ai-search-modal .modal-content {
+  border-radius: 1rem;
+}
+
+.ai-search-modal .modal-header {
+  align-items: center;
+  padding: 0.625rem 0.875rem;
+}
+
+.ai-search-modal .modal-header .btn-close {
+  flex-shrink: 0;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin: 0 0 0 0.75rem;
+  padding: 0;
+}
+
+.ai-search-modal .modal-body {
+  padding: 1rem;
+}
+
+.ai-search-form {
+  gap: 0.75rem;
+}
+
+.ai-search-prompt {
+  min-height: 6.5rem;
+  padding: 0.8rem;
+  font-size: 1rem;
+}
+
+.ai-search-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.ai-search-submit,
+.ai-locate-btn {
+  width: 100%;
+  min-width: 0;
+}
+
+.ai-search-submit {
+  min-height: 2.875rem;
+}
+
+.ai-search-results,
+.ai-search-card {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+.ai-search-card,
+.ai-search-status,
+.ai-search-empty,
+.ai-search-loader {
+  padding: 0.875rem;
+}
+
+.ai-search-card-top {
+  gap: 0.65rem;
+}
+
+.ai-search-card-top > div {
+  min-width: 0;
+}
+
+.ai-search-card-title,
+.ai-search-card-meta,
+.ai-search-loader-copy {
+  overflow-wrap: anywhere;
+}
+
+.ai-search-card-title {
+  font-size: 1rem;
+}
+
+.ai-search-card-meta {
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.ai-search-card .research-score-heading {
+  text-align: left;
+}
+
+@media (max-width: 575.98px) {
+  .nav-shell {
+    gap: 0.5rem;
+  }
+
+  .brand-mark {
+    width: 3rem;
+    height: 3rem;
+    flex-basis: 3rem;
+  }
+
+  .brand-title {
+    font-size: 1.05rem;
+  }
+}

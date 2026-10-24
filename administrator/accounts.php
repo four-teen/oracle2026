@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/app/bootstrap.php';
+require_once dirname(__DIR__) . '/app/AccountManagement.php';
 
 Auth::requireAdmin();
 
@@ -10,6 +11,7 @@ function administrator_account_role_map(): array
 {
     return [
         1 => 'Administrator',
+        Auth::ROLE_DIRECTOR => 'Director',
         2 => 'Research Coordinator',
         5 => 'Extension Coordinator',
         3 => 'Student',
@@ -31,6 +33,8 @@ function administrator_account_role_badge_class($value): string
     switch ((int) $value) {
         case 1:
             return 'accounts-role-admin';
+        case Auth::ROLE_DIRECTOR:
+            return 'accounts-role-staff';
         case 2:
             return 'accounts-role-staff';
         case 5:
@@ -257,6 +261,7 @@ $roleFilter = isset($_GET['role']) ? trim((string) $_GET['role']) : '';
 $statusFilter = isset($_GET['status']) ? trim((string) $_GET['status']) : '';
 $page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
 $editAccountId = isset($_GET['edit']) ? (int) $_GET['edit'] : 0;
+$isCreateMode = isset($_GET['create']) && (string) $_GET['create'] === '1';
 
 if ($page < 1) {
     $page = 1;
@@ -271,6 +276,10 @@ if ($roleFilter !== '' && !array_key_exists((int) $roleFilter, $roleMap)) {
 }
 
 if ($editAccountId < 1) {
+    $editAccountId = 0;
+}
+
+if ($isCreateMode) {
     $editAccountId = 0;
 }
 
@@ -309,151 +318,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo = Database::connection();
         Database::ensureAccountCoordinatorColumns();
 
-        if ($postedAction === 'save_account') {
-            $accountId = isset($_POST['accountid']) ? (int) $_POST['accountid'] : 0;
-            $currentAccount = Database::findAccountById($accountId);
+        if (in_array($postedAction, ['save_account', 'create_account'], true)) {
+            $isNewAccount = $postedAction === 'create_account';
+            $isCreateMode = $isNewAccount;
+            $accountId = $isNewAccount ? 0 : administrator_account_positive_int($_POST['accountid'] ?? 0);
 
-            if ($currentAccount === null) {
-                throw new RuntimeException('The selected account was not found.');
-            }
+            if (!$isNewAccount) {
+                $currentAccount = Database::findAccountById($accountId);
 
-            $name = trim((string) ($_POST['acc_name'] ?? ''));
-            $email = trim((string) ($_POST['email'] ?? ''));
-            $roleInput = trim((string) ($_POST['acc_type'] ?? ''));
-            $roleId = (int) $roleInput;
-            $roleIds = administrator_account_role_ids($_POST['acc_roles'] ?? [], $roleId);
-            $campusId = administrator_account_positive_int($_POST['campus'] ?? 0);
-            $programId = administrator_account_positive_int($_POST['programid'] ?? 0);
-
-            if ($name === '') {
-                throw new RuntimeException('Account name is required.');
-            }
-
-            if (administrator_account_string_length($name) > 50) {
-                throw new RuntimeException('Account name must be 50 characters or fewer.');
-            }
-
-            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                throw new RuntimeException('Enter a valid email address.');
-            }
-
-            if (administrator_account_string_length($email) > 50) {
-                throw new RuntimeException('Email must be 50 characters or fewer.');
-            }
-
-            if ($roleInput === '' || !array_key_exists($roleId, $roleMap)) {
-                throw new RuntimeException('Select a valid role.');
-            }
-
-            if ($roleIds === []) {
-                throw new RuntimeException('Assign at least one login role.');
-            }
-
-            if (!in_array($roleId, $roleIds, true)) {
-                $roleIds[] = $roleId;
-            }
-
-            $roleIds = administrator_account_role_ids($roleIds);
-
-            if (in_array(Auth::ROLE_RESEARCH_COORDINATOR, $roleIds, true) && $campusId < 1) {
-                throw new RuntimeException('Assign a campus to every research coordinator account.');
-            }
-
-            if (
-                $accountId === $currentAccountId
-                && !in_array(Auth::role(), $roleIds, true)
-            ) {
-                throw new RuntimeException('Keep your current session role assigned to this account before saving.');
-            }
-
-            if ($campusId > 0) {
-                $campusStatement = $pdo->prepare(
-                    'SELECT campusid
-                     FROM tblcampus
-                     WHERE campusid = :campusid
-                     LIMIT 1'
-                );
-                $campusStatement->bindValue(':campusid', $campusId, PDO::PARAM_INT);
-                $campusStatement->execute();
-
-                if ((int) $campusStatement->fetchColumn() < 1) {
-                    throw new RuntimeException('The selected campus does not exist.');
+                if ($currentAccount === null) {
+                    throw new RuntimeException('The selected account was not found.');
                 }
             }
 
-            if ($programId > 0) {
-                $programStatement = $pdo->prepare(
-                    "SELECT course.courseid,
-                            CAST(NULLIF(TRIM(COALESCE(college.collegecampus, '')), '') AS UNSIGNED) AS campusid
-                     FROM tblcourse course
-                     LEFT JOIN tblcollege college
-                       ON college.collegeid = CAST(NULLIF(TRIM(COALESCE(course.coursecollege, '')), '') AS UNSIGNED)
-                     WHERE course.courseid = :programid
-                     LIMIT 1"
-                );
-                $programStatement->bindValue(':programid', $programId, PDO::PARAM_INT);
-                $programStatement->execute();
-                $programRow = $programStatement->fetch();
-
-                if (!is_array($programRow)) {
-                    throw new RuntimeException('The selected program does not exist.');
-                }
-
-                $programCampusId = administrator_account_positive_int($programRow['campusid'] ?? 0);
-
-                if ($campusId > 0 && $programCampusId > 0 && $programCampusId !== $campusId) {
-                    throw new RuntimeException('Select a program that belongs to the assigned campus.');
-                }
-            }
-
-            $normalizedEmail = normalize_email($email);
-
-            if (
-                $accountId === $currentAccountId
-                && $currentLoginEmail !== ''
-                && $normalizedEmail !== $currentLoginEmail
-            ) {
-                throw new RuntimeException(
-                    'You cannot change the login email for the account you are currently signed in with.'
-                );
-            }
-
-            $duplicateStatement = $pdo->prepare(
-                'SELECT COUNT(*)
-                 FROM tblaccount
-                 WHERE REPLACE(LOWER(email), " ", "") = :email
-                   AND accountid <> :accountid'
+            $accountId = AccountManagement::save(
+                $pdo,
+                $_POST,
+                $isNewAccount,
+                $currentAccountId,
+                Auth::role(),
+                $currentLoginEmail
             );
-            $duplicateStatement->bindValue(':email', $normalizedEmail);
-            $duplicateStatement->bindValue(':accountid', $accountId, PDO::PARAM_INT);
-            $duplicateStatement->execute();
 
-            if ((int) $duplicateStatement->fetchColumn() > 0) {
-                throw new RuntimeException('That email address is already assigned to another account.');
+            if ($isNewAccount) {
+                set_flash('accounts_success', 'Account created. It can sign in with its approved Google email.');
+                redirect(administrator_accounts_url(administrator_account_navigation_params('', '', '', 1, $accountId)));
             }
-
-            $updateStatement = $pdo->prepare(
-                'UPDATE tblaccount
-                 SET acc_name = :acc_name,
-                     email = :email,
-                     acc_type = :acc_type,
-                     acc_roles = :acc_roles,
-                     campus = :campus,
-                     programid = :programid
-                 WHERE accountid = :accountid'
-            );
-            $updateStatement->bindValue(':acc_name', $name);
-            $updateStatement->bindValue(':email', $email);
-            $updateStatement->bindValue(':acc_type', $roleId, PDO::PARAM_INT);
-            $updateStatement->bindValue(':acc_roles', administrator_account_role_storage($roleIds));
-            $campusId > 0
-                ? $updateStatement->bindValue(':campus', $campusId, PDO::PARAM_INT)
-                : $updateStatement->bindValue(':campus', null, PDO::PARAM_NULL);
-            $programId > 0
-                ? $updateStatement->bindValue(':programid', $programId, PDO::PARAM_INT)
-                : $updateStatement->bindValue(':programid', null, PDO::PARAM_NULL);
-            $updateStatement->bindValue(':accountid', $accountId, PDO::PARAM_INT);
-            $updateStatement->execute();
 
             set_flash('accounts_success', 'Account details were updated.');
             redirect(administrator_accounts_url(administrator_account_navigation_params(
@@ -505,10 +395,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         throw new RuntimeException('The requested action is not supported.');
     } catch (Throwable $exception) {
-        if ($postedAction === 'save_account') {
+        if (in_array($postedAction, ['save_account', 'create_account'], true)) {
+            $isCreateMode = $postedAction === 'create_account';
             $editorError = $exception->getMessage();
             $selectedAccount = [
-                'accountid' => isset($_POST['accountid']) ? (int) $_POST['accountid'] : 0,
+                'accountid' => $isCreateMode ? 0 : administrator_account_positive_int($_POST['accountid'] ?? 0),
                 'acc_name' => trim((string) ($_POST['acc_name'] ?? '')),
                 'email' => trim((string) ($_POST['email'] ?? '')),
                 'acc_type' => isset($_POST['acc_type']) ? (int) $_POST['acc_type'] : 0,
@@ -519,7 +410,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'campus' => administrator_account_positive_int($_POST['campus'] ?? 0),
                 'programid' => administrator_account_positive_int($_POST['programid'] ?? 0),
             ];
-            $editAccountId = (int) $selectedAccount['accountid'];
+            $editAccountId = $isCreateMode ? 0 : (int) $selectedAccount['accountid'];
         } else {
             set_flash('accounts_error', $exception->getMessage());
             redirect(administrator_accounts_url(administrator_account_navigation_params(
@@ -531,6 +422,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             )));
         }
     }
+}
+
+if ($isCreateMode && $selectedAccount === null) {
+    $selectedAccount = [
+        'accountid' => 0,
+        'acc_name' => '',
+        'email' => '',
+        'acc_type' => 0,
+        'acc_roles' => '0',
+        'is_enabled' => 1,
+        'campus' => null,
+        'programid' => null,
+    ];
 }
 
 try {
@@ -710,6 +614,8 @@ $pageFiltersWithEditor = administrator_account_navigation_params(
     $page,
     $editAccountId > 0 ? $editAccountId : null
 );
+$pageFiltersWithCreate = $pageFiltersWithoutEditor;
+$pageFiltersWithCreate['create'] = '1';
 
 $select2CssPath = dirname(__DIR__) . '/assets/vendor/libs/select2/select2.min.css';
 $select2JsPath = dirname(__DIR__) . '/assets/vendor/libs/select2/select2.min.js';
@@ -764,6 +670,12 @@ $extraStyles = '
 .accounts-alert.error {
   background-color: rgba(242, 100, 100, 0.14);
   color: #a64040;
+}
+
+.accounts-page-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 18px;
 }
 
 .accounts-filter-form {
@@ -1332,6 +1244,10 @@ ob_start();
       </article>
     <?php endif; ?>
 
+    <div class="accounts-page-actions">
+      <a class="primary-default-btn" href="<?= e(administrator_accounts_url($pageFiltersWithCreate)); ?>">Add Account</a>
+    </div>
+
     <div class="row stat-cards">
       <?php foreach ($summaryItems as $summaryItem): ?>
         <div class="col-md-6 col-xl-3">
@@ -1352,6 +1268,7 @@ ob_start();
     <div class="row">
       <div class="col-12">
         <?php if ($selectedAccount !== null): ?>
+          <?php $selectedAccountIsCreate = $isCreateMode || (int) ($selectedAccount['accountid'] ?? 0) < 1; ?>
           <?php $selectedAccountEnabled = administrator_account_is_enabled($selectedAccount); ?>
           <?php $selectedAccountIsCurrent = administrator_account_is_current($selectedAccount, $currentAccountId); ?>
           <?php $selectedRoleIds = administrator_account_role_ids($selectedAccount['acc_roles'] ?? '', (int) $selectedAccount['acc_type']); ?>
@@ -1360,24 +1277,30 @@ ob_start();
           <article class="white-block accounts-editor">
             <div class="accounts-editor-heading">
               <div>
-                <h3 class="white-block__title">Edit Account #<?= e((string) $selectedAccount['accountid']); ?></h3>
-                <p class="accounts-editor-copy">Update the account name, email, and role. Use enable or disable to control sign-in access.</p>
+                <h3 class="white-block__title"><?= $selectedAccountIsCreate ? 'Create Account' : 'Edit Account #' . e((string) $selectedAccount['accountid']); ?></h3>
+                <p class="accounts-editor-copy"><?= $selectedAccountIsCreate
+                    ? 'Add the account name, approved Google email, and workspace roles. New accounts are enabled immediately.'
+                    : 'Update the account name, email, and role. Use enable or disable to control sign-in access.'; ?></p>
               </div>
-              <div class="accounts-editor-status">
+              <?php if (!$selectedAccountIsCreate): ?>
+                <div class="accounts-editor-status">
                 <span class="<?= e($selectedAccountEnabled ? 'badge-active' : 'badge-disabled'); ?>">
                   <?= e(administrator_account_status_label($selectedAccountEnabled)); ?>
                 </span>
-              </div>
+                </div>
+              <?php endif; ?>
             </div>
 
             <?php if ($editorError !== null): ?>
               <div class="accounts-alert error"><?= e($editorError); ?></div>
             <?php endif; ?>
 
-            <form method="post" action="<?= e(administrator_accounts_url($pageFiltersWithEditor)); ?>">
+            <form method="post" action="<?= e(administrator_accounts_url($selectedAccountIsCreate ? $pageFiltersWithCreate : $pageFiltersWithEditor)); ?>">
               <input type="hidden" name="csrf_token" value="<?= e(csrf_token()); ?>">
-              <input type="hidden" name="action" value="save_account">
-              <input type="hidden" name="accountid" value="<?= e((string) $selectedAccount['accountid']); ?>">
+              <input type="hidden" name="action" value="<?= $selectedAccountIsCreate ? 'create_account' : 'save_account'; ?>">
+              <?php if (!$selectedAccountIsCreate): ?>
+                <input type="hidden" name="accountid" value="<?= e((string) $selectedAccount['accountid']); ?>">
+              <?php endif; ?>
 
               <div class="accounts-editor-grid">
                 <label class="form-label-wrapper">
@@ -1447,7 +1370,7 @@ ob_start();
                       </option>
                     <?php endforeach; ?>
                   </select>
-                  <span class="accounts-field-note">Required when Research Coordinator is one of the account login roles.</span>
+                  <span class="accounts-field-note">Required when Research Coordinator or Director is one of the account login roles.</span>
                 </label>
 
                 <label class="form-label-wrapper accounts-program-field">
@@ -1466,12 +1389,16 @@ ob_start();
               </div>
 
               <div class="accounts-editor-actions">
-                <button class="primary-default-btn" type="submit">Save Changes</button>
+                <button class="primary-default-btn" type="submit"><?= $selectedAccountIsCreate ? 'Create Account' : 'Save Changes'; ?></button>
                 <a class="secondary-default-btn" href="<?= e(administrator_accounts_url($pageFiltersWithoutEditor)); ?>">Close Editor</a>
               </div>
             </form>
 
-            <?php if ($selectedAccountIsCurrent): ?>
+            <?php if ($selectedAccountIsCreate): ?>
+              <div class="accounts-editor-toggle">
+                <span class="accounts-field-note">The email must belong to an account approved for Google sign-in.</span>
+              </div>
+            <?php elseif ($selectedAccountIsCurrent): ?>
               <div class="accounts-editor-toggle">
                 <span class="accounts-inline-note">Current Session</span>
                 <span class="accounts-field-note">The account in your current session cannot be disabled here.</span>

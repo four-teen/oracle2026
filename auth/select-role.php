@@ -42,6 +42,10 @@ $name = trim((string) ($googleUser['name'] ?? $account['acc_name'] ?? 'Approved 
 $email = trim((string) ($googleUser['email'] ?? $account['email'] ?? ''));
 
 $roleCards = [
+    Auth::ROLE_DIRECTOR => [
+        'icon' => 'bx-line-chart',
+        'note' => 'Monitor campus research analytics and manage manuscript records.',
+    ],
     Auth::ROLE_ADMIN => [
         'icon' => 'bx-shield-quarter',
         'note' => 'Manage system setup, accounts, and institutional records.',
@@ -104,6 +108,7 @@ $roleCards = [
 
     .bx-book-reader::before { content: "\ec53"; }
     .bx-grid-alt::before { content: "\ed5e"; }
+    .bx-line-chart::before { content: "\edcd"; }
     .bx-network-chart::before { content: "\ee01"; }
     .bx-shield-quarter::before { content: "\ee6b"; }
     .bx-user::before { content: "\eec6"; }

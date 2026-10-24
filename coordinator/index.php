@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/app/bootstrap.php';
 
-Auth::requireResearchCoordinator();
+CoordinatorPage::requireWorkspaceRole($researchWorkspaceRole ?? Auth::ROLE_RESEARCH_COORDINATOR);
 require_once dirname(__DIR__) . '/app/CoordinatorStudentResearch.php';
 
 function coordinator_dashboard_int(array $row, string $key): int
@@ -42,8 +42,11 @@ function coordinator_dashboard_percentage(int $part, int $total): string
     return number_format(($part / $total) * 100, 1) . '%';
 }
 
-$campusId = Auth::campusId();
+$isDirector = Auth::isDirector();
+$assignedCampusId = Auth::campusId();
+$campusId = $assignedCampusId;
 $campusLabel = 'Campus #' . $campusId;
+$campusOptions = [];
 $stats = [
     'records_total' => 0,
     'with_abstract' => 0,
@@ -53,6 +56,7 @@ $stats = [
     'latest_update' => '',
 ];
 $programBreakdown = [];
+$directorProgramBreakdown = [];
 $sdgOptions = coordinator_student_sdg_options();
 $sdgCounts = array_fill_keys(array_keys($sdgOptions), 0);
 $sdgAlignedTotal = 0;
@@ -71,18 +75,57 @@ try {
     Database::ensureAccountCoordinatorColumns();
     Database::ensureManuscriptTable();
 
-    $campusStatement = $pdo->prepare(
-        'SELECT campusname
-         FROM tblcampus
-         WHERE campusid = :campusid
-         LIMIT 1'
-    );
-    $campusStatement->bindValue(':campusid', $campusId, PDO::PARAM_INT);
-    $campusStatement->execute();
-    $resolvedCampusLabel = trim((string) $campusStatement->fetchColumn());
+    if ($isDirector) {
+        $campusOptions = $pdo->query(
+            'SELECT campusid, campusname
+             FROM tblcampus
+             ORDER BY campusname ASC, campusid ASC'
+        )->fetchAll(PDO::FETCH_ASSOC);
 
-    if ($resolvedCampusLabel !== '') {
-        $campusLabel = $resolvedCampusLabel;
+        if ($campusOptions === []) {
+            throw new RuntimeException('No campuses are available for Director analytics.');
+        }
+
+        $requestedCampusRaw = isset($_GET['campus']) && is_scalar($_GET['campus'])
+            ? trim((string) $_GET['campus'])
+            : '';
+        $requestedCampusId = $requestedCampusRaw !== '' && ctype_digit($requestedCampusRaw)
+            ? (int) $requestedCampusRaw
+            : 0;
+        $availableCampusIds = [];
+
+        foreach ($campusOptions as $campusOption) {
+            $availableCampusIds[] = (int) ($campusOption['campusid'] ?? 0);
+        }
+
+        if ($requestedCampusId > 0 && in_array($requestedCampusId, $availableCampusIds, true)) {
+            $campusId = $requestedCampusId;
+        } elseif (in_array($assignedCampusId, $availableCampusIds, true)) {
+            $campusId = $assignedCampusId;
+        } else {
+            $campusId = $availableCampusIds[0];
+        }
+
+        foreach ($campusOptions as $campusOption) {
+            if ((int) ($campusOption['campusid'] ?? 0) === $campusId) {
+                $campusLabel = trim((string) ($campusOption['campusname'] ?? ''));
+                break;
+            }
+        }
+    } else {
+        $campusStatement = $pdo->prepare(
+            'SELECT campusname
+             FROM tblcampus
+             WHERE campusid = :campusid
+             LIMIT 1'
+        );
+        $campusStatement->bindValue(':campusid', $campusId, PDO::PARAM_INT);
+        $campusStatement->execute();
+        $campusLabel = trim((string) $campusStatement->fetchColumn());
+    }
+
+    if ($campusLabel === '') {
+        $campusLabel = 'Campus #' . $campusId;
     }
 
     $summaryStatement = $pdo->prepare(
@@ -108,24 +151,80 @@ try {
         $stats['latest_update'] = isset($summary['latest_update']) ? (string) $summary['latest_update'] : '';
     }
 
-    $programStatement = $pdo->prepare(
-        "SELECT COALESCE(m.programid, 0) AS program_key,
-                p.coursecode,
-                c.collegeid,
-                c.collegename,
-                COUNT(*) AS total
-         FROM tblresearches m
-         LEFT JOIN tblcourse p ON p.courseid = m.programid
-         LEFT JOIN tblcollege c
-           ON c.collegeid = CAST(NULLIF(TRIM(COALESCE(p.coursecollege, '')), '') AS UNSIGNED)
-          AND CAST(NULLIF(TRIM(COALESCE(c.collegecampus, '')), '') AS UNSIGNED) = m.campusid
-         WHERE m.campusid = :campusid
-         GROUP BY COALESCE(m.programid, 0), p.coursecode, c.collegeid, c.collegename
-         ORDER BY program_key ASC"
-    );
-    $programStatement->bindValue(':campusid', $campusId, PDO::PARAM_INT);
+    if ($isDirector) {
+        $programStatement = $pdo->prepare(
+            "SELECT campus.campusid,
+                    college.collegeid,
+                    college.collegename,
+                    course.courseid AS program_key,
+                    course.coursecode,
+                    COUNT(DISTINCT m.titleid) AS total,
+                    COUNT(DISTINCT CASE WHEN LOWER(TRIM(rt.research_type)) = 'thesis' THEN m.titleid END) AS thesis_total,
+                    COUNT(DISTINCT CASE WHEN LOWER(TRIM(rt.research_type)) = 'capstone' THEN m.titleid END) AS capstone_total,
+                    COUNT(DISTINCT CASE WHEN LOWER(TRIM(rt.research_type)) = 'research, development and extension' THEN m.titleid END) AS rde_total
+             FROM tblcampus campus
+             LEFT JOIN tblcollege college
+               ON CAST(NULLIF(TRIM(COALESCE(college.collegecampus, '')), '') AS UNSIGNED) = campus.campusid
+             LEFT JOIN tblcourse course
+               ON CAST(NULLIF(TRIM(COALESCE(course.coursecollege, '')), '') AS UNSIGNED) = college.collegeid
+             LEFT JOIN tblresearches m
+               ON m.programid = course.courseid
+              AND m.campusid = campus.campusid
+             LEFT JOIN tblresearchtype rt ON rt.researchtypeid = m.typeid
+             GROUP BY campus.campusid, college.collegeid, college.collegename,
+                      course.courseid, course.coursecode
+             UNION ALL
+             SELECT m.campusid,
+                    0 AS collegeid,
+                    'College not assigned' AS collegename,
+                    COALESCE(m.programid, 0) AS program_key,
+                    p.coursecode,
+                    COUNT(DISTINCT m.titleid) AS total,
+                    COUNT(DISTINCT CASE WHEN LOWER(TRIM(rt.research_type)) = 'thesis' THEN m.titleid END) AS thesis_total,
+                    COUNT(DISTINCT CASE WHEN LOWER(TRIM(rt.research_type)) = 'capstone' THEN m.titleid END) AS capstone_total,
+                    COUNT(DISTINCT CASE WHEN LOWER(TRIM(rt.research_type)) = 'research, development and extension' THEN m.titleid END) AS rde_total
+             FROM tblresearches m
+             INNER JOIN tblcampus campus ON campus.campusid = m.campusid
+             LEFT JOIN tblresearchtype rt ON rt.researchtypeid = m.typeid
+             LEFT JOIN tblcourse p ON p.courseid = m.programid
+             LEFT JOIN tblcollege c
+               ON c.collegeid = CAST(NULLIF(TRIM(COALESCE(p.coursecollege, '')), '') AS UNSIGNED)
+              AND CAST(NULLIF(TRIM(COALESCE(c.collegecampus, '')), '') AS UNSIGNED) = m.campusid
+             WHERE c.collegeid IS NULL
+             GROUP BY m.campusid, COALESCE(m.programid, 0), p.coursecode
+             ORDER BY campusid ASC, collegeid ASC, program_key ASC"
+        );
+    } else {
+        $programStatement = $pdo->prepare(
+            "SELECT COALESCE(m.programid, 0) AS program_key,
+                    p.coursecode,
+                    c.collegeid,
+                    c.collegename,
+                    COUNT(*) AS total
+             FROM tblresearches m
+             LEFT JOIN tblcourse p ON p.courseid = m.programid
+             LEFT JOIN tblcollege c
+               ON c.collegeid = CAST(NULLIF(TRIM(COALESCE(p.coursecollege, '')), '') AS UNSIGNED)
+              AND CAST(NULLIF(TRIM(COALESCE(c.collegecampus, '')), '') AS UNSIGNED) = m.campusid
+             WHERE m.campusid = :campusid
+             GROUP BY COALESCE(m.programid, 0), p.coursecode, c.collegeid, c.collegename
+             ORDER BY program_key ASC"
+        );
+        $programStatement->bindValue(':campusid', $campusId, PDO::PARAM_INT);
+    }
+
     $programStatement->execute();
-    $programBreakdown = $programStatement->fetchAll();
+    if ($isDirector) {
+        $directorProgramBreakdown = $programStatement->fetchAll();
+        $programBreakdown = array_values(array_filter(
+            $directorProgramBreakdown,
+            static function (array $row) use ($campusId): bool {
+                return (int) $row['campusid'] === $campusId && $row['collegeid'] !== null;
+            }
+        ));
+    } else {
+        $programBreakdown = $programStatement->fetchAll();
+    }
 
     $sdgStatement = $pdo->prepare(
         'SELECT sdgs, COUNT(*) AS total
@@ -237,6 +336,12 @@ foreach ($programBreakdown as $programRow) {
         ];
     }
 
+    // Keep campus colleges with no catalog programs in the overview without
+    // creating a placeholder program in their drilldown.
+    if ($isDirector && $collegeId > 0 && $programRow['program_key'] === null) {
+        continue;
+    }
+
     $color = (int) ($programRow['program_key'] ?? 0) === 0 ? '#94a3b8' : '#64748b';
 
     if ($collegeId > 0) {
@@ -246,6 +351,7 @@ foreach ($programBreakdown as $programRow) {
 
     $collegeGroups[$collegeId]['total'] += $programTotal;
     $collegeGroups[$collegeId]['programs'][] = [
+        'program_key' => (int) ($programRow['program_key'] ?? 0),
         'code' => coordinator_dashboard_program_label($programRow),
         'total' => $programTotal,
         'color' => $color,
@@ -253,7 +359,11 @@ foreach ($programBreakdown as $programRow) {
 }
 
 foreach ($collegeGroups as &$collegeGroup) {
-    usort($collegeGroup['programs'], static function (array $left, array $right): int {
+    usort($collegeGroup['programs'], static function (array $left, array $right) use ($isDirector): int {
+        if ($isDirector) {
+            return strnatcasecmp($left['code'], $right['code']);
+        }
+
         return ($right['total'] <=> $left['total']) ?: strnatcasecmp($left['code'], $right['code']);
     });
 }
@@ -266,7 +376,7 @@ uasort($collegeGroups, static function (array $left, array $right): int {
 });
 
 $activeCollegeCount = count(array_filter($collegeGroups, static function (array $college): bool {
-    return $college['id'] > 0;
+    return $college['id'] > 0 && $college['total'] > 0;
 }));
 $largestCollegeTotal = $collegeGroups !== [] ? max(array_column($collegeGroups, 'total')) : 0;
 $scaleMagnitude = pow(10, floor(log10(max(1, $largestCollegeTotal / 4))));
@@ -287,9 +397,103 @@ $sdgColors = [
     9 => '#fd6925', 10 => '#dd1367', 11 => '#fd9d24', 12 => '#bf8b2e',
     13 => '#3f7e44', 14 => '#0a97d9', 15 => '#56c02b', 16 => '#00689d', 17 => '#19486a',
 ];
+$researchOutputChartData = ['campuses' => []];
+
+if ($isDirector && $dashboardError === null) {
+    $campusOutputGroups = [];
+    $emptyOutputTypes = ['thesis' => 0, 'capstone' => 0, 'rde' => 0];
+
+    foreach ($campusOptions as $campusOption) {
+        $outputCampusId = (int) $campusOption['campusid'];
+        $campusOutputGroups[$outputCampusId] = [
+            'id' => $outputCampusId,
+            'name' => trim((string) $campusOption['campusname']) ?: 'Campus #' . $outputCampusId,
+            'total' => 0,
+            'types' => $emptyOutputTypes,
+            'color' => $programPalette[max(0, $outputCampusId - 1) % count($programPalette)],
+            'children' => [],
+        ];
+    }
+
+    foreach ($directorProgramBreakdown as $row) {
+        $outputCampusId = (int) $row['campusid'];
+        if (!isset($campusOutputGroups[$outputCampusId]) || $row['collegeid'] === null) {
+            continue;
+        }
+
+        $outputCollegeId = (int) $row['collegeid'];
+        if (!isset($campusOutputGroups[$outputCampusId]['children'][$outputCollegeId])) {
+            $campusOutputGroups[$outputCampusId]['children'][$outputCollegeId] = [
+                'id' => $outputCollegeId,
+                'name' => trim((string) $row['collegename']) ?: 'College #' . $outputCollegeId,
+                'total' => 0,
+                'types' => $emptyOutputTypes,
+                'color' => $outputCollegeId > 0
+                    ? $programPalette[($outputCollegeId - 1) % count($programPalette)]
+                    : '#64748b',
+                'children' => [],
+            ];
+        }
+
+        if ($row['program_key'] === null) {
+            continue;
+        }
+
+        $outputTotal = (int) $row['total'];
+        $campusOutputGroups[$outputCampusId]['total'] += $outputTotal;
+        $campusOutputGroups[$outputCampusId]['children'][$outputCollegeId]['total'] += $outputTotal;
+        $outputTypes = [];
+        foreach (array_keys($emptyOutputTypes) as $typeKey) {
+            $outputTypes[$typeKey] = (int) $row[$typeKey . '_total'];
+            $campusOutputGroups[$outputCampusId]['types'][$typeKey] += $outputTypes[$typeKey];
+            $campusOutputGroups[$outputCampusId]['children'][$outputCollegeId]['types'][$typeKey] += $outputTypes[$typeKey];
+        }
+        $campusOutputGroups[$outputCampusId]['children'][$outputCollegeId]['children'][] = [
+            'id' => (int) $row['program_key'],
+            'name' => coordinator_dashboard_program_label($row),
+            'total' => $outputTotal,
+            'types' => $outputTypes,
+            'color' => '#2563eb',
+            'children' => [],
+        ];
+    }
+
+    foreach ($campusOutputGroups as &$outputCampus) {
+        uasort($outputCampus['children'], static function (array $left, array $right): int {
+            return (($left['id'] === 0) <=> ($right['id'] === 0))
+                ?: strnatcasecmp($left['name'], $right['name']);
+        });
+        $outputCampus['children'] = array_values($outputCampus['children']);
+
+        foreach ($outputCampus['children'] as $collegeIndex => &$outputCollege) {
+            $outputCollege['color'] = $outputCollege['id'] > 0
+                ? $programPalette[$collegeIndex % count($programPalette)]
+                : '#64748b';
+            usort($outputCollege['children'], static function (array $left, array $right): int {
+                return strnatcasecmp($left['name'], $right['name']);
+            });
+            foreach ($outputCollege['children'] as $programIndex => &$outputProgram) {
+                $outputProgram['color'] = $programPalette[$programIndex % count($programPalette)];
+            }
+            unset($outputProgram);
+        }
+        unset($outputCollege);
+    }
+    unset($outputCampus);
+    $researchOutputChartData['campuses'] = array_values($campusOutputGroups);
+}
+
+$hasResearchOutput = $isDirector ? $researchOutputChartData['campuses'] !== [] : $collegeGroups !== [];
+$researchOutputChartJson = json_encode(
+    $researchOutputChartData,
+    JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+);
 
 $extraHead = '<link rel="stylesheet" href="' . e(app_link('assets/css/coordinator-dashboard.css')) . '?v=' . filemtime(dirname(__DIR__) . '/assets/css/coordinator-dashboard.css') . '">';
-$extraScripts = '<script src="' . e(app_link('assets/js/coordinator-dashboard.js')) . '?v=' . filemtime(dirname(__DIR__) . '/assets/js/coordinator-dashboard.js') . '"></script>';
+$extraScripts = ($isDirector
+    ? '<script src="' . e(app_link('assets/vendor/libs/apex-charts/apexcharts.js')) . '"></script>'
+    : '')
+    . '<script src="' . e(app_link('assets/js/coordinator-dashboard.js')) . '?v=' . filemtime(dirname(__DIR__) . '/assets/js/coordinator-dashboard.js') . '"></script>';
 
 ob_start();
 ?>
@@ -303,11 +507,27 @@ ob_start();
     <h2 class="coord-hero-title">Research production at a glance</h2>
     <p class="coord-hero-copy">Explore college output, research contributors, and your campus alignment with the Sustainable Development Goals.</p>
   </div>
-  <div class="coord-hero-actions">
-    <a class="coord-btn-primary" href="<?= e(app_link('coordinator/research.php')); ?>">
-      <i class="bx bx-edit-alt"></i>
-      Manage manuscripts
-    </a>
+  <div class="coord-hero-actions<?= $isDirector ? ' coord-hero-actions--director' : ''; ?>">
+    <?php if ($isDirector): ?>
+      <form class="coord-campus-switcher" method="get" action="<?= e(app_link('director/')); ?>">
+        <label for="coord-campus-select">Campus view</label>
+        <select id="coord-campus-select" name="campus">
+          <?php foreach ($campusOptions as $campusOption): ?>
+            <?php $campusOptionId = (int) ($campusOption['campusid'] ?? 0); ?>
+            <option value="<?= e((string) $campusOptionId); ?>"<?= $campusOptionId === $campusId ? ' selected' : ''; ?>>
+              <?= e(trim((string) ($campusOption['campusname'] ?? '')) ?: 'Campus #' . $campusOptionId); ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+        <button type="submit">View</button>
+      </form>
+    <?php endif; ?>
+    <?php if (!Auth::isDirector()): ?>
+      <a class="coord-btn-primary" href="<?= e(app_link(Auth::campusResearchWorkspacePath() . 'research.php')); ?>">
+        <i class="bx bx-edit-alt"></i>
+        Manage manuscripts
+      </a>
+    <?php endif; ?>
     <span class="coord-update">Latest update: <?= e(coordinator_dashboard_date_label($stats['latest_update'])); ?></span>
   </div>
 </section>
@@ -361,10 +581,12 @@ ob_start();
 <section id="college-output-chart" class="coord-card coord-production" data-view="share" aria-labelledby="college-output-title">
   <div class="coord-panel-header">
     <div>
-      <h2 id="college-output-title" class="coord-panel-title">Research output by college</h2>
-      <p class="coord-panel-copy">Ranked by output. Expand a college to see its programs.</p>
+      <h2 id="college-output-title" class="coord-panel-title"<?= $isDirector ? ' data-output-title' : ''; ?>><?= $isDirector ? 'Research output by campus' : 'Research output by college'; ?></h2>
+      <p class="coord-panel-copy"><?= $isDirector
+          ? 'Compare total research, thesis, capstone, and research, development and extension output across campuses, colleges, and programs.'
+          : 'Ranked by output. Expand a college to see its programs.'; ?></p>
     </div>
-    <?php if ($collegeGroups !== []): ?>
+    <?php if ($collegeGroups !== [] && !$isDirector): ?>
       <div class="coord-view-switch" role="group" aria-label="Chart comparison">
         <button type="button" data-chart-view="volume" aria-pressed="false">By volume</button>
         <button type="button" data-chart-view="share" aria-pressed="true">By share</button>
@@ -372,17 +594,87 @@ ob_start();
     <?php endif; ?>
   </div>
 
-  <?php if ($collegeGroups === []): ?>
+  <?php if (!$hasResearchOutput): ?>
     <div class="coord-chart-empty">
       <i class="bx bx-bar-chart-alt-2" aria-hidden="true"></i>
-      <strong><?= $dashboardError !== null ? 'Research output is unavailable' : 'No campus manuscripts yet'; ?></strong>
-      <p><?= $dashboardError !== null ? 'Please try loading the dashboard again.' : 'College and program contributions will appear once manuscripts are added.'; ?></p>
+      <strong><?= $dashboardError !== null
+          ? 'Research output is unavailable'
+          : ($isDirector ? 'No campuses are available yet' : 'No campus manuscripts yet'); ?></strong>
+      <p><?= $dashboardError !== null
+          ? 'Please try loading the dashboard again.'
+          : ($isDirector ? 'Campus research output will appear here once campuses are available.' : 'College and program contributions will appear once manuscripts are added.'); ?></p>
     </div>
   <?php else: ?>
     <div class="coord-production-meta">
-      <span class="coord-meta-chip"><strong><?= e(number_format($activeCollegeCount)); ?></strong> <?= $activeCollegeCount === 1 ? 'college' : 'colleges'; ?> with output</span>
-      <span class="coord-meta-chip"><strong><?= e(number_format($stats['programs_used'])); ?></strong> active programs</span>
+      <?php if ($isDirector): ?>
+        <span class="coord-meta-chip" data-output-item-count><?= e(number_format(count($researchOutputChartData['campuses']))); ?> campuses</span>
+        <span class="coord-meta-chip" data-output-total><?= e(number_format(array_sum(array_column($researchOutputChartData['campuses'], 'total')))); ?> manuscripts</span>
+      <?php else: ?>
+        <span class="coord-meta-chip"><strong><?= e(number_format($activeCollegeCount)); ?></strong> <?= $activeCollegeCount === 1 ? 'college' : 'colleges'; ?> with output</span>
+        <span class="coord-meta-chip"><strong><?= e(number_format($stats['programs_used'])); ?></strong> active programs</span>
+      <?php endif; ?>
     </div>
+    <?php if ($isDirector): ?>
+      <div class="coord-output-navigation" data-output-navigation hidden>
+        <div>
+          <p class="coord-output-level" data-output-level>University overview</p>
+          <h3 class="coord-output-heading" data-output-heading>All campuses</h3>
+        </div>
+        <button type="button" class="coord-output-back" data-output-back aria-controls="director-research-output-chart" hidden>
+          <i class="bx bx-arrow-back" aria-hidden="true"></i>
+          <span data-output-back-label>Back to campuses</span>
+        </button>
+      </div>
+      <p class="coord-chart-hint" data-output-hint aria-live="polite" hidden>Select a campus to explore its colleges.</p>
+      <div class="coord-output-legend" data-output-legend role="group" aria-label="Research output lines. Select a legend item to show or hide its line." hidden></div>
+      <div class="coord-campus-chart-scroll">
+        <div
+          id="director-research-output-chart"
+          class="coord-campus-program-chart"
+          data-research-output-chart
+          data-chart-data="<?= e($researchOutputChartJson !== false ? $researchOutputChartJson : '{}'); ?>"
+          role="img"
+          aria-label="Research counts by campus. Campus names are on the X axis and counts on the Y axis."
+        ></div>
+        <p class="coord-output-empty" data-output-empty hidden>No colleges are linked to this campus yet.</p>
+      </div>
+      <div class="coord-output-choices" data-output-choices aria-label="Campus research counts and college navigation" hidden></div>
+      <details class="coord-all-program-figures">
+        <summary data-program-figures-label>View exact program counts</summary>
+        <div class="coord-output-breakdown">
+          <?php foreach ($researchOutputChartData['campuses'] as $outputCampus): ?>
+            <section class="coord-campus-figure-group" data-campus-figure data-campus-id="<?= e((string) $outputCampus['id']); ?>">
+              <h3 class="coord-campus-figure-title"><?= e($outputCampus['name']); ?> <span><?= e(number_format($outputCampus['total'])); ?> manuscripts</span></h3>
+              <div class="coord-program-figures-grid">
+                <?php foreach ($outputCampus['children'] as $outputCollege): ?>
+                  <section class="coord-program-figure-group" data-program-figure data-college-id="<?= e((string) $outputCollege['id']); ?>" aria-label="<?= e('Programs in ' . $outputCollege['name']); ?>">
+                    <h4 class="coord-program-figure-title">
+                      <span class="coord-program-figure-dot" style="--college-line-color: <?= e($outputCollege['color']); ?>;" aria-hidden="true"></span>
+                      <?= e($outputCollege['name']); ?>
+                    </h4>
+                    <ul class="coord-program-keys">
+                      <?php foreach ($outputCollege['children'] as $outputProgram): ?>
+                        <li class="coord-program-key">
+                          <span><?= e($outputProgram['name']); ?></span>
+                          <strong><?= e(number_format($outputProgram['total'])); ?><span class="visually-hidden"> manuscripts</span></strong>
+                          <small>(<?= e(coordinator_dashboard_percentage($outputProgram['total'], $outputCollege['total'])); ?>)</small>
+                        </li>
+                      <?php endforeach; ?>
+                    </ul>
+                    <?php if ($outputCollege['children'] === []): ?>
+                      <p class="coord-chart-hint">No programs are linked to this college yet.</p>
+                    <?php endif; ?>
+                  </section>
+                <?php endforeach; ?>
+              </div>
+              <?php if ($outputCampus['children'] === []): ?>
+                <p class="coord-chart-hint">No colleges are linked to this campus yet.</p>
+              <?php endif; ?>
+            </section>
+          <?php endforeach; ?>
+        </div>
+      </details>
+    <?php else: ?>
     <p class="coord-chart-hint" data-chart-hint aria-live="polite">Each bar is 100% of its college's output. Colors show program shares.</p>
 
     <div class="coord-chart-axis" aria-hidden="true">
@@ -438,11 +730,12 @@ ob_start();
         <?php endif; ?>
       </article>
     <?php endforeach; ?>
+    <?php endif; ?>
   <?php endif; ?>
 
   <?php if ($dashboardError === null && $stats['records_total'] > 0): ?>
     <div class="coord-completeness" aria-label="Catalog completeness">
-      <p class="coord-completeness-title">Catalog completeness</p>
+      <p class="coord-completeness-title">Catalog completeness<?= $isDirector ? ' &middot; ' . e($campusLabel) : ''; ?></p>
       <dl>
         <div><dt><i class="bx bx-file" aria-hidden="true"></i> With abstracts</dt><dd><?= e($abstractCoverage); ?><small><?= e(number_format($stats['with_abstract'])); ?> manuscripts</small></dd></div>
         <div><dt><i class="bx bx-user-check" aria-hidden="true"></i> With authors</dt><dd><?= e($authorCoverage); ?><small><?= e(number_format($stats['with_authors'])); ?> manuscripts</small></dd></div>
@@ -541,7 +834,11 @@ ob_start();
     <div class="coord-chart-empty">
       <i class="bx bx-globe" aria-hidden="true"></i>
       <strong><?= !$sdgAvailable ? 'SDG statistics are unavailable' : ($stats['records_total'] === 0 ? 'No SDG statistics yet' : 'No SDG tags assigned'); ?></strong>
-      <p><?= !$sdgAvailable ? 'Please try loading the dashboard again.' : ($stats['records_total'] === 0 ? 'Goal counts will appear as campus manuscripts are added and tagged.' : 'Add SDG tags in manuscript management to start tracking goal alignment.'); ?></p>
+      <p><?= !$sdgAvailable
+          ? 'Please try loading the dashboard again.'
+          : ($stats['records_total'] === 0 || Auth::isDirector()
+              ? 'Goal counts will appear as campus manuscripts are added and tagged.'
+              : 'Add SDG tags in manuscript management to start tracking goal alignment.'); ?></p>
     </div>
   <?php else: ?>
     <div class="coord-sdg-coverage">

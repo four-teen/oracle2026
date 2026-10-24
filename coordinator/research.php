@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/app/bootstrap.php';
 
-Auth::requireResearchCoordinator();
+CoordinatorPage::requireWorkspaceRole($researchWorkspaceRole ?? Auth::ROLE_RESEARCH_COORDINATOR);
 $assignedCampusId = Auth::campusId();
 $currentAccountId = (int) (Auth::account()['accountid'] ?? 0);
 Database::ensureManuscriptTable();

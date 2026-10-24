@@ -8,6 +8,7 @@ final class Auth
     public const ROLE_RESEARCH_COORDINATOR = 2;
     public const ROLE_EXTENSION_COORDINATOR = 5;
     public const ROLE_PROFESSOR = 4;
+    public const ROLE_DIRECTOR = 6;
 
     public static function check(): bool
     {
@@ -30,6 +31,7 @@ final class Auth
     {
         return [
             self::ROLE_ADMIN => 'Administrator',
+            self::ROLE_DIRECTOR => 'Director',
             self::ROLE_RESEARCH_COORDINATOR => 'Research Coordinator',
             self::ROLE_EXTENSION_COORDINATOR => 'Extension Coordinator',
             3 => 'Student',
@@ -212,6 +214,16 @@ final class Auth
         return self::role() === self::ROLE_RESEARCH_COORDINATOR;
     }
 
+    public static function isDirector(): bool
+    {
+        return self::role() === self::ROLE_DIRECTOR;
+    }
+
+    public static function campusResearchWorkspacePath(): string
+    {
+        return self::isDirector() ? 'director/' : 'coordinator/';
+    }
+
     public static function isExtensionCoordinator(): bool
     {
         return self::role() === self::ROLE_EXTENSION_COORDINATOR;
@@ -260,6 +272,10 @@ final class Auth
         }
 
         if (!self::isResearchCoordinator()) {
+            if (self::isDirector()) {
+                redirect(self::defaultWorkspaceUrl());
+            }
+
             if (self::isAdmin()) {
                 redirect(app_link('administrator/'));
             }
@@ -274,6 +290,24 @@ final class Auth
 
         if (self::campusId() < 1) {
             set_flash('auth_error', 'Your research coordinator account must be assigned to a campus first.');
+            redirect(app_link());
+        }
+    }
+
+    public static function requireDirector(): void
+    {
+        self::requireLogin();
+
+        if (self::isRoleSelectionRequired()) {
+            redirect(app_link('auth/select-role.php'));
+        }
+
+        if (!self::isDirector()) {
+            redirect(self::defaultWorkspaceUrl());
+        }
+
+        if (self::campusId() < 1) {
+            set_flash('auth_error', 'Your Director account must be assigned to a campus first.');
             redirect(app_link());
         }
     }
@@ -316,6 +350,12 @@ final class Auth
     public static function workspaceUrlForRole(int $role, ?array $account = null): string
     {
         $resolvedAccount = $account ?? self::account() ?? [];
+
+        if ($role === self::ROLE_DIRECTOR) {
+            return (int) ($resolvedAccount['campus'] ?? 0) > 0
+                ? app_link('director/')
+                : app_link();
+        }
 
         if ($role === self::ROLE_RESEARCH_COORDINATOR) {
             return (int) ($resolvedAccount['campus'] ?? 0) > 0
