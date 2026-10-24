@@ -11,10 +11,12 @@ case "$ORACLE_MODE" in
   *) printf 'Usage: bash deploy/cpanel.sh [--check]\n' >&2; exit 1 ;;
 esac
 
-ORACLE_GIT="$(command -v git || true)"
-if [[ -z "$ORACLE_GIT" && -x /usr/local/cpanel/3rdparty/bin/git ]]; then
+if [[ -x /usr/local/cpanel/3rdparty/bin/git ]]; then
   ORACLE_GIT=/usr/local/cpanel/3rdparty/bin/git
+else
+  ORACLE_GIT="$(command -v git || true)"
 fi
+cd -- "$ORACLE_REPOSITORY"
 if [[ -z "$ORACLE_GIT" ]]; then
   printf 'Git is required to prepare the deployment.\n' >&2
   exit 1
@@ -30,7 +32,7 @@ ORACLE_RUNTIME_PATHS=(
   administrator app assets auth coordinator director extension professor plugins
   index.php logout.php research_ai_search.php favicon.ico LICENSE.md
 )
-ORACLE_COMMIT="$("$ORACLE_GIT" -C "$ORACLE_REPOSITORY" rev-parse --short=12 HEAD)"
+ORACLE_COMMIT="$("$ORACLE_GIT" rev-parse --short=12 HEAD)"
 ORACLE_TEMP_ROOT="${TMPDIR:-/tmp}"
 ORACLE_STAGE="$(mktemp -d "${ORACLE_TEMP_ROOT%/}/oracle-deploy.XXXXXXXX")"
 
@@ -42,7 +44,7 @@ oracle_cleanup() {
 }
 trap oracle_cleanup EXIT
 
-"$ORACLE_GIT" -C "$ORACLE_REPOSITORY" archive --format=tar HEAD -- "${ORACLE_RUNTIME_PATHS[@]}" \
+"$ORACLE_GIT" archive --format=tar HEAD -- "${ORACLE_RUNTIME_PATHS[@]}" \
   | tar -xf - -C "$ORACLE_STAGE"
 
 for ORACLE_REQUIRED in index.php app/bootstrap.php assets/vendor/js/bootstrap.js; do
@@ -79,14 +81,14 @@ case "$ORACLE_REPOSITORY/" in
     exit 1 ;;
 esac
 
-if [[ -n "$("$ORACLE_GIT" -C "$ORACLE_REPOSITORY" status --porcelain)" ]]; then
+if [[ -n "$("$ORACLE_GIT" status --porcelain)" ]]; then
   printf 'The cPanel repository has uncommitted changes. Nothing was published.\n' >&2
   exit 1
 fi
 
 # Preserve cPanel's PHP handler, redirects, and any other live .htaccess rules.
 if [[ ! -e "$ORACLE_TARGET/.htaccess" ]]; then
-  "$ORACLE_GIT" -C "$ORACLE_REPOSITORY" show HEAD:.htaccess > "$ORACLE_STAGE/.htaccess"
+  "$ORACLE_GIT" show HEAD:.htaccess > "$ORACLE_STAGE/.htaccess"
 fi
 
 ORACLE_BACKUP_ROOT="$HOME/oracle-deployment-backups"
