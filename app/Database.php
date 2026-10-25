@@ -7,6 +7,7 @@ final class Database
     private static $connection = null;
     private static $accountColumns = null;
     private static $tableColumns = [];
+    private static $readSchemas = [];
 
     public static function connection(): PDO
     {
@@ -96,6 +97,52 @@ final class Database
         $account = $statement->fetch();
 
         return is_array($account) ? $account : null;
+    }
+
+    public static function ensureAccountReadSchema(): void
+    {
+        self::ensureReadSchema('accounts', [
+            'SELECT accountid, acc_name, email, acc_type, acc_roles, is_enabled, campus, programid FROM tblaccount LIMIT 0',
+        ], static function (): void {
+            self::ensureAccountCoordinatorColumns();
+        });
+    }
+
+    public static function ensureDirectorAnalyticsSchema(): void
+    {
+        self::ensureReadSchema('director_analytics', [
+            'SELECT campusid, campusname FROM tblcampus LIMIT 0',
+            'SELECT collegeid, collegename, collegecampus FROM tblcollege LIMIT 0',
+            'SELECT courseid, coursecode, coursecollege FROM tblcourse LIMIT 0',
+            'SELECT researchtypeid, research_type FROM tblresearchtype LIMIT 0',
+            'SELECT titleid, campusid, sdgs, updated_at, other_details, abstract_file_path, authors, typeid, programid, adviser_accountid, statistician_accountid, english_critic_accountid FROM tblresearches LIMIT 0',
+            'SELECT manuscriptid, accountid FROM tblmanuscript_panelists LIMIT 0',
+        ], static function (): void {
+            self::ensureManuscriptTable();
+        });
+    }
+
+    private static function ensureReadSchema(string $key, array $checks, callable $initialize): void
+    {
+        if (isset(self::$readSchemas[$key])) {
+            return;
+        }
+
+        try {
+            foreach ($checks as $query) {
+                self::connection()->query($query);
+            }
+        } catch (PDOException $exception) {
+            // Initialize an older installation only when a required table or
+            // column is missing. Normal analytics requests do no maintenance.
+            $driverCode = (int) ($exception->errorInfo[1] ?? 0);
+            if (!in_array($driverCode, [1054, 1146], true)) {
+                throw $exception;
+            }
+            $initialize();
+        }
+
+        self::$readSchemas[$key] = true;
     }
 
     public static function ensureAccountStatusColumn(): void

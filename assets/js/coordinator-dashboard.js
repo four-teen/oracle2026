@@ -1,6 +1,14 @@
 (function () {
   'use strict';
 
+  const initialCharts = [];
+  const markDirectorReady = () => {
+    const root = document.documentElement;
+    if (root.dataset.directorPageState !== 'loading') return;
+    root.dataset.directorPageState = 'ready';
+    document.dispatchEvent(new Event('oracle:director-state'));
+  };
+
   const contributorTabs = document.querySelector('[data-contributor-tabs]');
   if (contributorTabs) {
     const tabs = Array.from(contributorTabs.querySelectorAll('[data-contributor-tab]'));
@@ -393,17 +401,20 @@
         states: { hover: { filter: { type: 'none' } }, active: { filter: { type: 'none' } } }
       });
 
-      outputGraph.render().then(() => {
+      initialCharts.push(outputGraph.render().then(() => {
         navigation.hidden = false;
         hint.hidden = false;
         legend.hidden = false;
         choices.hidden = false;
-      }).catch(showUnavailable);
+      }).catch(showUnavailable));
     }
   }
 
   const chart = document.getElementById('college-output-chart');
-  if (!chart || chart.querySelectorAll('[data-chart-view]').length === 0) return;
+  if (!chart || chart.querySelectorAll('[data-chart-view]').length === 0) {
+    Promise.all(initialCharts).then(markDirectorReady);
+    return;
+  }
 
   const segments = Array.from(chart.querySelectorAll('.coord-program-segment'));
   let frame = 0;
@@ -441,4 +452,5 @@
   }
   if (document.fonts) document.fonts.ready.then(fitLabels);
   fitLabels();
+  Promise.all(initialCharts).then(markDirectorReady);
 })();

@@ -245,7 +245,7 @@
   letter-spacing: -0.045em;
 }
 
-/* CSS owns the intro so it also finishes when JavaScript is unavailable. */
+/* The timed exit remains a fallback when JavaScript is unavailable. */
 @media (prefers-reduced-motion: no-preference) {
   .oracle-intro {
     position: fixed;
@@ -297,6 +297,74 @@
     .oracle-intro-complete {
       animation: oracle-intro-complete 80ms ease 1480ms both;
     }
+  }
+}
+
+/* With JavaScript, keep the logo up until the catalog and page are ready. */
+.oracle-intro-loading {
+  overflow: hidden;
+}
+
+.oracle-intro-loading .oracle-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  background: #fff;
+  pointer-events: auto;
+  animation: none;
+}
+
+.oracle-intro-loading .oracle-intro-page > :is(.landing-nav, .landing-main, .landing-footer, .ai-floating-actions) {
+  visibility: hidden;
+  animation: none;
+}
+
+.oracle-intro-status {
+  max-width: 20rem;
+  margin: 0;
+  padding: 0 1rem;
+  color: #526172;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.oracle-intro-retry {
+  min-height: 2.75rem;
+  padding: 0.6rem 1.2rem;
+  border: 0;
+  border-radius: 0.65rem;
+  background: #166534;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.oracle-intro-retry:focus-visible {
+  outline: 2px solid #15803d;
+  outline-offset: 3px;
+}
+
+.oracle-intro-ready .oracle-intro {
+  pointer-events: none;
+  animation: oracle-intro-exit 420ms cubic-bezier(.4, 0, .2, 1) both;
+}
+
+.oracle-intro-ready .oracle-intro-page > :is(.landing-nav, .landing-main, .landing-footer, .ai-floating-actions) {
+  animation: oracle-intro-reveal 520ms cubic-bezier(.22, 1, .36, 1) 80ms both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oracle-intro-ready .oracle-intro {
+    display: none;
+  }
+
+  .oracle-intro-ready .oracle-intro-page > :is(.landing-nav, .landing-main, .landing-footer, .ai-floating-actions) {
+    animation: none;
   }
 }
 

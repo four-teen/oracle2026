@@ -6,6 +6,7 @@ require_once dirname(__DIR__) . '/app/bootstrap.php';
 
 CoordinatorPage::requireWorkspaceRole($researchWorkspaceRole ?? Auth::ROLE_RESEARCH_COORDINATOR);
 require_once dirname(__DIR__) . '/app/CoordinatorStudentResearch.php';
+require_once dirname(__DIR__) . '/app/ResearchAnalytics.php';
 
 function coordinator_dashboard_int(array $row, string $key): int
 {
@@ -72,8 +73,12 @@ $contributorsAvailable = false;
 
 try {
     $pdo = Database::connection();
-    Database::ensureAccountCoordinatorColumns();
-    Database::ensureManuscriptTable();
+    if ($isDirector) {
+        Database::ensureDirectorAnalyticsSchema();
+    } else {
+        Database::ensureAccountCoordinatorColumns();
+        Database::ensureManuscriptTable();
+    }
 
     if ($isDirector) {
         $campusOptions = $pdo->query(
@@ -226,28 +231,9 @@ try {
         $programBreakdown = $programStatement->fetchAll();
     }
 
-    $sdgStatement = $pdo->prepare(
-        'SELECT sdgs, COUNT(*) AS total
-         FROM tblresearches
-         WHERE campusid = :campusid
-         GROUP BY sdgs'
-    );
-    $sdgStatement->bindValue(':campusid', $campusId, PDO::PARAM_INT);
-    $sdgStatement->execute();
-
-    foreach ($sdgStatement->fetchAll() as $sdgRow) {
-        // Each manuscript counts once per valid goal, even if its stored codes repeat.
-        $goals = coordinator_student_integer_selection($sdgRow['sdgs'] ?? '', $sdgOptions);
-        $total = (int) $sdgRow['total'];
-
-        if ($goals !== []) {
-            $sdgAlignedTotal += $total;
-        }
-
-        foreach ($goals as $goal) {
-            $sdgCounts[$goal] += $total;
-        }
-    }
+    $sdgData = ResearchAnalytics::sdgs($pdo, $campusId);
+    $sdgCounts = $sdgData['counts'];
+    $sdgAlignedTotal = $sdgData['aligned'];
 
     $sdgAvailable = true;
 } catch (Throwable $exception) {
@@ -256,62 +242,8 @@ try {
 
 if ($dashboardError === null) {
     try {
-        // Account IDs keep people with the same name separate. Panelist links are
-        // counted once per manuscript, regardless of duplicate assignment rows.
-        $contributorStatement = $pdo->prepare(
-            "SELECT 'advisers' AS role_key, a.accountid, a.acc_name, COUNT(DISTINCT m.titleid) AS total
-             FROM tblresearches m
-             INNER JOIN tblaccount a ON a.accountid = m.adviser_accountid
-             WHERE m.campusid = :adviser_campus
-             GROUP BY a.accountid, a.acc_name
-             UNION ALL
-             SELECT 'panelists' AS role_key, a.accountid, a.acc_name, COUNT(DISTINCT m.titleid) AS total
-             FROM tblresearches m
-             INNER JOIN tblmanuscript_panelists mp ON mp.manuscriptid = m.titleid
-             INNER JOIN tblaccount a ON a.accountid = mp.accountid
-             WHERE m.campusid = :panelist_campus
-             GROUP BY a.accountid, a.acc_name
-             UNION ALL
-             SELECT 'statisticians' AS role_key, a.accountid, a.acc_name, COUNT(DISTINCT m.titleid) AS total
-             FROM tblresearches m
-             INNER JOIN tblaccount a ON a.accountid = m.statistician_accountid
-             WHERE m.campusid = :statistician_campus
-             GROUP BY a.accountid, a.acc_name
-             UNION ALL
-             SELECT 'english-critics' AS role_key, a.accountid, a.acc_name, COUNT(DISTINCT m.titleid) AS total
-             FROM tblresearches m
-             INNER JOIN tblaccount a ON a.accountid = m.english_critic_accountid
-             WHERE m.campusid = :critic_campus
-             GROUP BY a.accountid, a.acc_name
-             ORDER BY role_key ASC, total DESC, acc_name ASC, accountid ASC"
-        );
-        foreach (['adviser_campus', 'panelist_campus', 'statistician_campus', 'critic_campus'] as $parameter) {
-            $contributorStatement->bindValue(':' . $parameter, $campusId, PDO::PARAM_INT);
-        }
-        $contributorStatement->execute();
-
-        foreach ($contributorStatement->fetchAll() as $contributorRow) {
-            $roleKey = (string) $contributorRow['role_key'];
-            $name = trim((string) $contributorRow['acc_name']);
-            $contributorRoles[$roleKey]['people'][] = [
-                'name' => $name !== '' ? (preg_replace('/\s+/u', ' ', $name) ?? $name) : 'Account #' . (int) $contributorRow['accountid'],
-                'total' => (int) $contributorRow['total'],
-            ];
-            $contributorRoles[$roleKey]['recorded_total'] += (int) $contributorRow['total'];
-        }
-
-        // Several panelists may be attached to one manuscript, so their summed
-        // individual totals must not be used as manuscript coverage.
-        $panelistCoverageStatement = $pdo->prepare(
-            'SELECT COUNT(DISTINCT m.titleid)
-             FROM tblresearches m
-             INNER JOIN tblmanuscript_panelists mp ON mp.manuscriptid = m.titleid
-             INNER JOIN tblaccount a ON a.accountid = mp.accountid
-             WHERE m.campusid = :campusid'
-        );
-        $panelistCoverageStatement->bindValue(':campusid', $campusId, PDO::PARAM_INT);
-        $panelistCoverageStatement->execute();
-        $contributorRoles['panelists']['recorded_total'] = (int) $panelistCoverageStatement->fetchColumn();
+        $contributorData = ResearchAnalytics::contributors($pdo, $campusId);
+        $contributorRoles = $contributorData['roles'];
         $contributorsAvailable = true;
     } catch (Throwable $exception) {
         error_log('Coordinator contributor statistics: ' . $exception->getMessage());
@@ -391,12 +323,7 @@ $rankedGoals = array_keys($sdgOptions);
 usort($rankedGoals, static function (int $left, int $right) use ($sdgCounts): int {
     return ($sdgCounts[$right] <=> $sdgCounts[$left]) ?: ($left <=> $right);
 });
-$sdgColors = [
-    1 => '#e5243b', 2 => '#dda63a', 3 => '#4c9f38', 4 => '#c5192d',
-    5 => '#ff3a21', 6 => '#26bde2', 7 => '#fcc30b', 8 => '#a21942',
-    9 => '#fd6925', 10 => '#dd1367', 11 => '#fd9d24', 12 => '#bf8b2e',
-    13 => '#3f7e44', 14 => '#0a97d9', 15 => '#56c02b', 16 => '#00689d', 17 => '#19486a',
-];
+$sdgColors = ResearchAnalytics::SDG_COLORS;
 $researchOutputChartData = ['campuses' => []];
 
 if ($isDirector && $dashboardError === null) {
@@ -491,9 +418,9 @@ $researchOutputChartJson = json_encode(
 
 $extraHead = '<link rel="stylesheet" href="' . e(app_link('assets/css/coordinator-dashboard.css')) . '?v=' . filemtime(dirname(__DIR__) . '/assets/css/coordinator-dashboard.css') . '">';
 $extraScripts = ($isDirector
-    ? '<script src="' . e(app_link('assets/vendor/libs/apex-charts/apexcharts.js')) . '"></script>'
+    ? '<script src="' . e(app_link('assets/vendor/libs/apex-charts/apexcharts.js')) . '" defer></script>'
     : '')
-    . '<script src="' . e(app_link('assets/js/coordinator-dashboard.js')) . '?v=' . filemtime(dirname(__DIR__) . '/assets/js/coordinator-dashboard.js') . '"></script>';
+    . '<script src="' . e(app_link('assets/js/coordinator-dashboard.js')) . '?v=' . filemtime(dirname(__DIR__) . '/assets/js/coordinator-dashboard.js') . '" data-director-page-script defer></script>';
 
 ob_start();
 ?>
@@ -888,4 +815,6 @@ CoordinatorPage::render([
     'extra_head' => $extraHead,
     'extra_scripts' => $extraScripts,
     'campus_label' => $campusLabel,
+    'campus_id' => $campusId,
+    'loading_error' => $dashboardError !== null || !$sdgAvailable || !$contributorsAvailable,
 ]);
