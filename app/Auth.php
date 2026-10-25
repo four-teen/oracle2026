@@ -134,7 +134,7 @@ final class Auth
         session_regenerate_id(true);
     }
 
-    public static function requireLogin(): void
+    public static function requireLogin(bool $readOnlyWorkspace = false): void
     {
         if (!self::check()) {
             set_flash('auth_error', 'Please sign in with your approved Google account.');
@@ -144,7 +144,11 @@ final class Auth
         $account = self::account() ?? [];
         $freshAccount = null;
 
-        Database::ensureAccountCoordinatorColumns();
+        if ($readOnlyWorkspace) {
+            Database::ensureAccountReadSchema();
+        } else {
+            Database::ensureAccountCoordinatorColumns();
+        }
 
         if (isset($account['accountid'])) {
             $freshAccount = Database::findAccountById((int) $account['accountid']);
@@ -296,7 +300,7 @@ final class Auth
 
     public static function requireDirector(): void
     {
-        self::requireLogin();
+        self::requireLogin(true);
 
         if (self::isRoleSelectionRequired()) {
             redirect(app_link('auth/select-role.php'));

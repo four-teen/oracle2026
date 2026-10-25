@@ -732,6 +732,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
   data-theme="theme-default"
   data-assets-path="<?= e(app_link('assets/')); ?>"
   data-template="vertical-menu-template-free"
+  data-oracle-catalog-state="loading"
 >
   <head>
     <meta charset="utf-8" />
@@ -755,7 +756,8 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
     <link rel="stylesheet" href="<?= e(app_link('assets/vendor/css/core.css')); ?>" class="template-customizer-core-css" />
     <link rel="stylesheet" href="<?= e(app_link('assets/vendor/css/theme-default.css')); ?>" class="template-customizer-theme-css" />
     <link rel="stylesheet" href="<?= e(app_link('assets/css/demo.css')); ?>" />
-    <link rel="stylesheet" href="<?= e(app_link('assets/css/oracle-intro.css')); ?>?v=2" />
+    <link rel="stylesheet" href="<?= e(app_link('assets/css/oracle-intro.css')); ?>?v=<?= e((string) filemtime(__DIR__ . '/assets/css/oracle-intro.css')); ?>" />
+    <script src="<?= e(app_link('assets/js/oracle-intro.js')); ?>?v=<?= e((string) filemtime(__DIR__ . '/assets/js/oracle-intro.js')); ?>"></script>
     <script src="<?= e(app_link('assets/vendor/js/helpers.js')); ?>"></script>
     <script src="<?= e(app_link('assets/js/config.js')); ?>"></script>
     <style>
@@ -3278,10 +3280,10 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         }
       }
     </style>
-    <link rel="stylesheet" href="<?= e(app_link('assets/css/oracle-mobile.css')); ?>?v=6" media="(max-width: 991.98px)" />
+    <link rel="stylesheet" href="<?= e(app_link('assets/css/oracle-mobile.css')); ?>?v=7" media="(max-width: 991.98px)" />
   </head>
   <body class="landing-page oracle-intro-page">
-    <div class="oracle-intro" aria-hidden="true">
+    <div class="oracle-intro" role="status" aria-live="polite" aria-label="Loading research repository">
       <div class="oracle-intro-brand">
         <div class="oracle-intro-mark">
           <img
@@ -3315,6 +3317,8 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
           <span class="oracle-intro-piece oracle-intro-square oracle-intro-square-16"></span>
         </div>
         <p class="oracle-intro-name">Oracle</p>
+        <p class="oracle-intro-status">Loading research records and indexed count...</p>
+        <button class="oracle-intro-retry" type="button" hidden>Retry loading</button>
       </div>
     </div>
     <nav class="landing-nav">
@@ -3394,10 +3398,10 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
                 <span>Find related studies</span>
                 <i class="bx bx-right-arrow-alt" aria-hidden="true"></i>
               </button>
-              <div class="repository-stat" aria-label="<?= e(number_format($researchTotalCount)); ?> indexed research records">
+              <div class="repository-stat" id="repository-indexed-stat" aria-label="<?= e(number_format($researchTotalCount)); ?> indexed research records">
                 <span class="repository-stat-icon" aria-hidden="true"><i class="bx bx-collection"></i></span>
                 <span class="repository-stat-copy">
-                  <strong><?= e(number_format($researchTotalCount)); ?></strong>
+                  <strong id="repository-indexed-count"><?= e(number_format($researchTotalCount)); ?></strong>
                   <span>Indexed records available to search</span>
                 </span>
               </div>
@@ -3575,6 +3579,15 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
                             <?php endforeach; ?>
                           </span>
                         <?php endif; ?>
+                        <button
+                          type="button"
+                          class="research-details-badge d-lg-none"
+                          data-research-detail="1"
+                          data-titleid="<?= e((string) $research['titleid']); ?>"
+                          aria-label="View details for <?= e($research['title']); ?>"
+                          aria-controls="researchDetailModal"
+                          aria-haspopup="dialog"
+                        ><i class="bx bx-show" aria-hidden="true"></i> View details</button>
                       </div>
 
                       <p class="research-summary<?= !empty($research['summary_is_placeholder']) ? ' research-summary--empty' : ''; ?>"><?= e($research['summary']); ?></p>
@@ -3942,6 +3955,8 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         const sdgNames = <?= json_encode($researchSdgNames, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
         const countOutput = document.getElementById('research-count');
         const totalOutput = document.getElementById('research-total');
+        const indexedOutput = document.getElementById('repository-indexed-count');
+        const indexedStat = document.getElementById('repository-indexed-stat');
         const emptyState = document.getElementById('empty-state');
         const emptyStateMessage = emptyState ? emptyState.querySelector('p') : null;
         const researchGrid = document.getElementById('research-grid');
@@ -3968,7 +3983,13 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
         let catalogAbortController = null;
         let initialRecoveryTimer = null;
 
-        if (!countOutput || !totalOutput || !emptyState || !researchGrid) {
+        const setInitialCatalogState = state => {
+          document.documentElement.dataset.oracleCatalogState = state;
+          document.dispatchEvent(new Event('oracle:catalog-state'));
+        };
+
+        if (!countOutput || !totalOutput || !indexedOutput || !indexedStat || !emptyState || !researchGrid) {
+          setInitialCatalogState('error');
           return;
         }
 
@@ -4115,6 +4136,7 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
             + '        <span class="metric-line"><span class="metric-icon"><i class="bx bx-book-content"></i></span><strong>' + escapeHtml(research.type || 'Research record') + '</strong></span>'
             + '        <span class="metric-pill metric-pill--neutral"><i class="bx bx-check-shield"></i> ' + escapeHtml(research.status || 'Status not set') + '</span>'
             + renderResearchSdgImages(research)
+            + '        <button type="button" class="research-details-badge d-lg-none" data-research-detail="1" data-titleid="' + escapeHtml(research.titleid || '') + '" aria-label="View details for ' + title + '" aria-controls="researchDetailModal" aria-haspopup="dialog"><i class="bx bx-show" aria-hidden="true"></i> View details</button>'
             + '      </div>'
             + '      <p class="research-summary' + (research.summary_is_placeholder ? ' research-summary--empty' : '') + '">' + escapeHtml(research.summary || '') + '</p>'
             + '      <div class="research-footer">'
@@ -4133,6 +4155,15 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
           loadedCount = researchGrid.querySelectorAll('.research-entry').length;
           countOutput.textContent = String(loadedCount);
           totalOutput.textContent = String(totalCount);
+
+          if (indexedOutput) {
+            indexedOutput.textContent = totalCount.toLocaleString('en-US');
+          }
+
+          if (indexedStat) {
+            indexedStat.setAttribute('aria-label', totalCount.toLocaleString('en-US') + ' indexed research records');
+          }
+
           researchGrid.setAttribute('aria-busy', isLoading ? 'true' : 'false');
           emptyState.classList.toggle('d-none', isLoading || loadedCount !== 0);
           refreshFilterCopy();
@@ -4202,6 +4233,13 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
           const token = ++requestToken;
           const requestOffset = shouldReset ? 0 : nextOffset;
           const controller = 'AbortController' in window ? new AbortController() : null;
+          let requestTimedOut = false;
+          const timeout = controller && options && options.timeout
+            ? window.setTimeout(() => {
+              requestTimedOut = true;
+              controller.abort();
+            }, options.timeout)
+            : null;
           catalogAbortController = controller;
           isLoading = true;
           refreshCounters();
@@ -4237,6 +4275,11 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
 
             const payloadItems = Array.isArray(payload.items) ? payload.items : [];
 
+            if (!Array.isArray(payload.items) || (shouldReset && (!Number.isInteger(payload.total) || payload.total < 0
+              || (payload.total > 0 && payloadItems.length === 0)))) {
+              throw new Error('The research catalog did not finish loading. Please try again.');
+            }
+
             if (shouldReset) {
               researchGrid.innerHTML = '';
               loadedCount = 0;
@@ -4248,21 +4291,29 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
             }
 
             appendResearchItems(payloadItems);
+
+            if (shouldReset && totalCount > 0 && researchGrid.querySelectorAll('.research-entry').length === 0) {
+              throw new Error('The research list did not finish loading. Please try again.');
+            }
+
             nextOffset = requestOffset + payloadItems.length;
             hasMore = Boolean(payload.has_more);
             catalogError = '';
             return true;
           } catch (error) {
-            if (error && error.name === 'AbortError') {
+            if (error && error.name === 'AbortError' && !requestTimedOut) {
               return false;
             }
 
             if (token === requestToken) {
-              catalogError = error && error.message ? error.message : 'Unable to load research records.';
+              catalogError = requestTimedOut
+                ? 'Research records are taking longer than expected. Please try again.'
+                : (error && error.message ? error.message : 'Unable to load research records.');
             }
 
             return false;
           } finally {
+            window.clearTimeout(timeout);
             if (token === requestToken) {
               if (catalogAbortController === controller) {
                 catalogAbortController = null;
@@ -4585,16 +4636,23 @@ $sidebarYearRangeLabel = $researchYearMin !== null && $researchYearMax !== null
             const recovered = await loadCatalog({
               reset: true,
               filters: activeFilters,
+              timeout: 15000,
             });
 
-            if (!recovered && attempt < 2) {
+            if (recovered) {
+              setInitialCatalogState('ready');
+            } else if (attempt < 2) {
               initialRecoveryTimer = window.setTimeout(() => {
                 recoverInitialCatalog(attempt + 1);
               }, 750 * (attempt + 1));
+            } else {
+              setInitialCatalogState('error');
             }
           };
 
           recoverInitialCatalog(0);
+        } else {
+          setInitialCatalogState('ready');
         }
 
         const requestedResearchId = initialUrl.searchParams.get('research') || '';

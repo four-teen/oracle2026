@@ -134,16 +134,52 @@
 
 .research-metrics {
   gap: 0.65rem;
-}
-
-.research-metrics:not(:has(.research-sdg-thumbnails img)) {
-  display: none;
+  flex-wrap: nowrap;
 }
 
 .research-sdg-thumbnails {
+  flex: 1 1 auto;
+  min-width: 0;
   justify-content: flex-start;
   max-width: 100%;
   margin-left: 0;
+}
+
+.research-details-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  gap: 0.3rem;
+  min-height: 2.75rem;
+  margin-left: auto;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid #c9e3d1;
+  border-radius: 999px;
+  background: #f0fdf4;
+  color: #166534;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.research-details-badge i {
+  font-size: 1rem;
+}
+
+.research-details-badge:hover,
+.research-details-badge:active {
+  background: #dcfce7;
+  border-color: #86c99b;
+}
+
+.research-details-badge:focus-visible {
+  outline: 2px solid #15803d;
+  outline-offset: 3px;
 }
 
 .research-summary {

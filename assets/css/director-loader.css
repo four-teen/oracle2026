@@ -1,0 +1,73 @@
+.director-loader-loading > body > .coordinator-shell,
+.director-loader-loading > body > .director-mobile-menu {
+  visibility: hidden;
+}
+
+.director-loader-loading {
+  overflow: hidden;
+}
+
+.director-workspace .director-page-loader {
+  z-index: 20000;
+}
+
+.director-loader-loading .director-page-loader {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  overflow: auto;
+  background: #fff;
+  pointer-events: auto;
+  animation: none;
+}
+
+.director-loader-ready .director-page-loader {
+  pointer-events: none;
+  animation: oracle-intro-exit 200ms ease both;
+}
+
+.director-page-loader .oracle-intro-retry[hidden] {
+  display: none;
+}
+
+/* Use the same assembled logo, with a short cycle for workspace navigation. */
+@media (prefers-reduced-motion: no-preference) {
+  .director-page-loader .oracle-intro-brand {
+    padding: 1rem;
+    animation-duration: 500ms;
+  }
+
+  .director-page-loader .oracle-intro-name {
+    animation: oracle-intro-wordmark 250ms ease 150ms both;
+  }
+
+  .director-page-loader .oracle-intro-mark {
+    animation: oracle-intro-settle 200ms ease 500ms both;
+  }
+
+  @supports (clip-path: polygon(0 0, 100% 0, 100% 100%)) {
+    .director-page-loader .oracle-intro-piece {
+      animation:
+        oracle-intro-assemble 450ms cubic-bezier(.22, 1, .36, 1) calc(var(--oracle-piece-delay) * .3) both,
+        oracle-intro-fragment-exit 1ms linear 630ms forwards;
+    }
+
+    .director-page-loader .oracle-intro-square {
+      animation:
+        oracle-intro-gather 400ms cubic-bezier(.22, 1, .36, 1) calc(var(--oracle-piece-delay) * .3) both,
+        oracle-intro-fragment-exit 1ms linear 630ms forwards;
+    }
+
+    .director-page-loader .oracle-intro-complete {
+      animation: oracle-intro-complete 50ms ease 580ms both;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .director-loader-ready .director-page-loader {
+    display: none;
+  }
+}
